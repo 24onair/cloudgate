@@ -16,6 +16,13 @@ import {
   Plane,
 } from "lucide-react";
 import Link from "next/link";
+import {
+  useSlotConfig,
+  useBlockedSlots,
+  generateSlotTimes,
+  countAvailablePilots,
+} from "@/lib/slotStore";
+import { useSchedules } from "@/lib/scheduleStore";
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 
@@ -69,12 +76,7 @@ const PILOTS = [
   { id: "P004", name: "최솔바람", flights_today: 7, available: false },
 ];
 
-const TIME_SLOTS = [
-  "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
-  "12:00", "12:30", "13:00", "13:30", "14:00", "14:30",
-  "15:00", "15:30", "16:00", "16:30", "17:00",
-];
-
+// 이미 예약이 차서 마감된 슬롯 (실제 예약 데이터 연동 전 mock)
 const TAKEN_SLOTS = ["10:00", "11:00", "14:00"];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -190,6 +192,10 @@ export default function NewBookingPage() {
   });
   const [bookingId] = useState(generateBookingId);
   const [assignedPilot] = useState(() => assignPilot());
+
+  const slotCfg = useSlotConfig();
+  const blockedSlots = useBlockedSlots();
+  const schedules = useSchedules();
 
   const selectedProduct = PRODUCTS.find((p) => p.id === form.product_id);
   const selectedOptionDetails = selectedProduct?.options.filter((o) =>
@@ -321,10 +327,17 @@ export default function NewBookingPage() {
 
   const ScheduleStep = () => {
     const today = new Date().toISOString().split("T")[0];
+    const slotTimes = generateSlotTimes(slotCfg);
+    const blockedForDate = form.date ? (blockedSlots[form.date] ?? []) : [];
+    const pilotCount = form.date ? countAvailablePilots(form.date, schedules) : 0;
+    const noPilot = form.date && pilotCount === 0;
+
     return (
       <div>
         <h2 className="text-lg font-bold text-gray-900 mb-1">일정 선택</h2>
-        <p className="text-sm text-gray-500 mb-6">비행 날짜와 시간대를 선택하세요.</p>
+        <p className="text-sm text-gray-500 mb-6">
+          비행 날짜와 시간대를 선택하세요. 운영 시간 {slotCfg.startTime}~{slotCfg.endTime} ({slotCfg.intervalMinutes}분 간격)
+        </p>
 
         {/* 날짜 */}
         <div className="mb-6">
@@ -339,39 +352,70 @@ export default function NewBookingPage() {
             onChange={(e) => setForm({ ...form, date: e.target.value, time_slot: "" })}
             className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:outline-none focus:border-blue-400 text-gray-900 bg-white"
           />
+          {form.date && (
+            <div
+              className="mt-2 rounded-xl px-3 py-2 text-xs flex items-center gap-2"
+              style={{
+                backgroundColor: noPilot ? "#FEE2E2" : "#EFF6FF",
+                color: noPilot ? "#B91C1C" : "#1D4ED8",
+              }}
+            >
+              <Users className="w-3.5 h-3.5" />
+              {noPilot
+                ? "이 날짜에 출근 가능한 파일럿이 없습니다. 다른 날짜를 선택해주세요."
+                : `이 날짜의 가용 파일럿: ${pilotCount}명 (슬롯당 최대 ${pilotCount}건 예약 가능)`}
+            </div>
+          )}
         </div>
 
         {/* 시간대 */}
-        {form.date && (
+        {form.date && !noPilot && (
           <div className="mb-8">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
               <Clock className="w-4 h-4" style={{ color: "#2A7AE2" }} />
               시간대 선택
             </label>
             <div className="grid grid-cols-4 gap-2">
-              {TIME_SLOTS.map((slot) => {
-                const taken = TAKEN_SLOTS.includes(slot);
+              {slotTimes.map((slot) => {
+                const taken   = TAKEN_SLOTS.includes(slot);
+                const blocked = blockedForDate.includes(slot);
                 const selected = form.time_slot === slot;
+                const disabled = taken || blocked;
+                const subLabel = blocked ? "차단" : taken ? "마감" : null;
+
                 return (
                   <button
                     key={slot}
-                    disabled={taken}
+                    disabled={disabled}
                     onClick={() => setForm({ ...form, time_slot: slot })}
                     className={`py-2.5 rounded-lg text-sm font-medium transition-all border-2 ${
-                      taken
-                        ? "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"
+                      disabled
+                        ? "cursor-not-allowed"
                         : selected
                         ? "text-white border-transparent"
                         : "border-gray-200 bg-white text-gray-700 hover:border-blue-300"
                     }`}
-                    style={selected ? { backgroundColor: "#2A7AE2", borderColor: "#2A7AE2" } : {}}
+                    style={
+                      selected && !disabled
+                        ? { backgroundColor: "#2A7AE2", borderColor: "#2A7AE2" }
+                        : blocked
+                        ? { backgroundColor: "#FEE2E2", borderColor: "#FECACA", color: "#B91C1C" }
+                        : taken
+                        ? { backgroundColor: "#F9FAFB", borderColor: "#F3F4F6", color: "#D1D5DB" }
+                        : {}
+                    }
                   >
                     {slot}
-                    {taken && <span className="block text-xs text-gray-300">마감</span>}
+                    {subLabel && <span className="block text-xs">{subLabel}</span>}
                   </button>
                 );
               })}
             </div>
+            {slotTimes.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-6">
+                운영 시간이 설정되지 않았습니다. 예약슬롯 메뉴에서 설정해주세요.
+              </p>
+            )}
           </div>
         )}
 

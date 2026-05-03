@@ -14,6 +14,7 @@ import {
   CloudSun,
   PlusCircle,
   Package,
+  Clock,
 } from "lucide-react";
 
 const menuItems = [
@@ -40,6 +41,12 @@ const menuItems = [
     sublabel: "배정관리",
     icon: Users,
     href: "/admin/pilots",
+  },
+  {
+    label: "예약슬롯",
+    sublabel: "시간·정원",
+    icon: Clock,
+    href: "/admin/slots",
   },
   {
     label: "바람판",

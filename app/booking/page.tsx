@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Check,
   Clock,
-  Mountain,
   Camera,
   Video,
   AlertTriangle,
@@ -29,7 +28,6 @@ const PRODUCTS = [
     subtitle: "첫 패러글라이딩 입문",
     price: 75000,
     duration: "약 10분",
-    altitude: "300m",
     color: "#2A7AE2",
     features: ["탠덤 비행", "안전 교육", "기념 스티커"],
   },
@@ -39,7 +37,6 @@ const PRODUCTS = [
     subtitle: "스릴 넘치는 고고도 비행",
     price: 120000,
     duration: "약 20분",
-    altitude: "500m",
     color: "#0D2B52",
     features: ["고고도 탠덤 비행", "스릴 기동", "안전 교육"],
     popular: true,
@@ -50,7 +47,6 @@ const PRODUCTS = [
     subtitle: "프리미엄 풀 패키지",
     price: 180000,
     duration: "약 30분",
-    altitude: "800m",
     color: "#FF8A00",
     features: ["파노라마 코스", "VIP 라운지", "사진+영상 포함"],
   },
@@ -330,7 +326,6 @@ function BookingInner() {
                 <p className="text-xs text-gray-400 mb-2">{p.subtitle}</p>
                 <div className="flex items-center gap-3 text-xs text-gray-500">
                   <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{p.duration}</span>
-                  <span className="flex items-center gap-1"><Mountain className="w-3 h-3" />{p.altitude}</span>
                 </div>
               </div>
               <div className="text-right flex-shrink-0 ml-4">
@@ -366,12 +361,11 @@ function BookingInner() {
             <p className="text-xs text-gray-400">명</p>
           </div>
           <button
-            onClick={() => setHeadcount(Math.min(4, headcount + 1))}
+            onClick={() => setHeadcount(headcount + 1)}
             className="w-10 h-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-500 font-bold hover:border-gray-400"
           >
             +
           </button>
-          <p className="text-xs text-gray-400 ml-2">최대 4인</p>
         </div>
       </div>
 

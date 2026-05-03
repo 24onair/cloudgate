@@ -1,19 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getCategoryMeta } from "./categoryStore";
 
-export type CostCategory =
-  | "salary"
-  | "fuel"
-  | "insurance"
-  | "marketing"
-  | "maintenance"
-  | "other";
+// CostCategory는 이제 string (동적 카테고리 지원)
+export type CostCategory = string;
+
+export type CostType = "variable" | "fixed";
 
 export interface CostEntry {
   id: string;
   date: string;          // "YYYY-MM-DD"
   category: CostCategory;
+  costType?: CostType;   // 고정비 | 변동비 (기본: variable)
   name: string;
   amount: number;
   memo: string;
@@ -22,18 +21,16 @@ export interface CostEntry {
 }
 
 const STORAGE_KEY = "gureum_costs";
-const EVENT_KEY = "gureum_costs_update";
+const EVENT_KEY   = "gureum_costs_update";
 
-export const CATEGORY_META: Record<CostCategory, { label: string; color: string }> = {
-  salary:      { label: "파일럿 급여", color: "#2A7AE2" },
-  fuel:        { label: "연료비",      color: "#FF8A00" },
-  insurance:   { label: "보험료",      color: "#10B981" },
-  marketing:   { label: "마케팅",      color: "#8B5CF6" },
-  maintenance: { label: "장비유지",    color: "#F59E0B" },
-  other:       { label: "기타",        color: "#6B7280" },
-};
+// CATEGORY_META — 하위 호환용, categoryStore에서 동적으로 읽음
+export const CATEGORY_META = new Proxy({} as Record<string, { label: string; color: string }>, {
+  get(_target, key: string) {
+    return getCategoryMeta(key);
+  },
+});
 
-// ── 스토어 CRUD ─────────────────────────────────────────────────
+// ── CRUD ────────────────────────────────────────────────────────
 function load(): CostEntry[] {
   if (typeof window === "undefined") return [];
   try {
@@ -52,6 +49,7 @@ export function addCost(entry: Omit<CostEntry, "id" | "createdAt">) {
   const entries = load();
   const next: CostEntry = {
     ...entry,
+    costType: entry.costType ?? "variable",
     id: `c_${Date.now()}`,
     createdAt: new Date().toISOString(),
   };
@@ -71,7 +69,7 @@ export function getCostsByDate(date: string): CostEntry[] {
   return load().filter((e) => e.date === date);
 }
 
-// ── 훅 ────────────────────────────────────────────────────────
+// ── Hook ─────────────────────────────────────────────────────────
 export function useCosts(date?: string) {
   const [entries, setEntries] = useState<CostEntry[]>([]);
 

@@ -16,6 +16,7 @@ import {
   Package,
   Clock,
   Share2,
+  Settings,
 } from "lucide-react";
 
 const menuItems = [
@@ -84,6 +85,12 @@ const menuItems = [
     sublabel: "인스타·유튜브",
     icon: Share2,
     href: "/admin/sns",
+  },
+  {
+    label: "사이트설정",
+    sublabel: "배경·외관",
+    icon: Settings,
+    href: "/admin/settings",
   },
 ];
 

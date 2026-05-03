@@ -2,8 +2,8 @@
 
 import { useState, useRef } from "react";
 import {
-  Plus, X, Edit3, Trash2, Package, Tag, Clock, Mountain,
-  ToggleLeft, ToggleRight, Star, GripVertical, Camera, Video,
+  Plus, X, Edit3, Trash2, Package, Tag, Clock,
+  ToggleLeft, ToggleRight, Star, Camera, Video,
   ChevronDown, ChevronUp, ImagePlus, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import {
@@ -64,11 +64,9 @@ const EMPTY_PRODUCT: Omit<Product, "id" | "sortOrder"> = {
   subtitle: "",
   price: 0,
   duration: "",
-  altitude: "",
   color: "#2A7AE2",
   popular: false,
   active: true,
-  maxPax: 4,
   images: [],
 };
 
@@ -121,7 +119,6 @@ function ProductModal({
     if (!form.subtitle.trim()) e.subtitle = "부제목을 입력하세요";
     if (!form.price || form.price <= 0) e.price = "가격을 입력하세요";
     if (!form.duration.trim()) e.duration = "소요 시간을 입력하세요";
-    if (!form.altitude.trim()) e.altitude = "최대 고도를 입력하세요";
     return e;
   }
 
@@ -207,49 +204,19 @@ function ProductModal({
               {errors.price && <p className="text-xs text-red-500 mt-1">{errors.price}</p>}
             </div>
 
-            {/* 소요시간 + 고도 */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">
-                  소요 시간 <span className="text-red-500">*</span>
-                </label>
-                <input
-                  value={form.duration}
-                  onChange={(e) => set("duration", e.target.value)}
-                  placeholder="약 10분"
-                  className="w-full border rounded-xl px-3 py-2 text-sm outline-none focus:ring-2"
-                  style={{ borderColor: errors.duration ? "#EF4444" : "#E5E7EB", color: "#0D2B52" }}
-                />
-                {errors.duration && <p className="text-xs text-red-500 mt-1">{errors.duration}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">
-                  최대 고도 <span className="text-red-500">*</span>
-                </label>
-                <input
-                  value={form.altitude}
-                  onChange={(e) => set("altitude", e.target.value)}
-                  placeholder="300m"
-                  className="w-full border rounded-xl px-3 py-2 text-sm outline-none focus:ring-2"
-                  style={{ borderColor: errors.altitude ? "#EF4444" : "#E5E7EB", color: "#0D2B52" }}
-                />
-                {errors.altitude && <p className="text-xs text-red-500 mt-1">{errors.altitude}</p>}
-              </div>
-            </div>
-
-            {/* 최대 탑승 인원 */}
+            {/* 소요시간 */}
             <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">최대 탑승 인원</label>
-              <select
-                value={form.maxPax}
-                onChange={(e) => set("maxPax", Number(e.target.value))}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"
-                style={{ color: "#0D2B52" }}
-              >
-                {[1, 2, 3, 4, 6, 8].map((n) => (
-                  <option key={n} value={n}>{n}인</option>
-                ))}
-              </select>
+              <label className="block text-sm font-medium text-gray-600 mb-1">
+                소요 시간 <span className="text-red-500">*</span>
+              </label>
+              <input
+                value={form.duration}
+                onChange={(e) => set("duration", e.target.value)}
+                placeholder="약 10분"
+                className="w-full border rounded-xl px-3 py-2 text-sm outline-none focus:ring-2"
+                style={{ borderColor: errors.duration ? "#EF4444" : "#E5E7EB", color: "#0D2B52" }}
+              />
+              {errors.duration && <p className="text-xs text-red-500 mt-1">{errors.duration}</p>}
             </div>
 
             {/* 이미지 슬롯 */}
@@ -400,7 +367,6 @@ function ProductModal({
                   <p className="text-xs text-gray-400">{form.subtitle || "부제목"}</p>
                   <div className="flex gap-2 text-xs text-gray-500 mt-1">
                     {form.duration && <span>⏱ {form.duration}</span>}
-                    {form.altitude && <span>⛰ {form.altitude}</span>}
                   </div>
                 </div>
                 <div className="text-right">
@@ -659,8 +625,6 @@ export default function ProductsPage() {
               <p className="text-xs text-gray-400 mb-1.5">{product.subtitle}</p>
               <div className="flex gap-3 text-xs text-gray-500">
                 <span className="flex items-center gap-1"><Clock size={11} />{product.duration}</span>
-                <span className="flex items-center gap-1"><Mountain size={11} />{product.altitude}</span>
-                <span className="flex items-center gap-1"><GripVertical size={11} />최대 {product.maxPax}인</span>
               </div>
             </div>
 

@@ -17,12 +17,12 @@ import {
   MapPin,
   Plane,
   Users,
-  Mountain,
   Play,
   ExternalLink,
 } from "lucide-react";
 import { useSns, youtubeThumbnail } from "@/lib/snsStore";
 import { InstagramIcon as Instagram, YoutubeIcon as Youtube } from "@/components/SnsIcons";
+import { useHeroBg } from "@/lib/heroStore";
 
 // ── 데이터 ────────────────────────────────────────────────────────
 const PRODUCTS = [
@@ -32,7 +32,6 @@ const PRODUCTS = [
     subtitle: "첫 패러글라이딩 입문",
     price: 75000,
     duration: "약 10분",
-    altitude: "300m",
     highlight: false,
     color: "#2A7AE2",
     bg: "white",
@@ -52,7 +51,6 @@ const PRODUCTS = [
     subtitle: "스릴 넘치는 고고도 비행",
     price: 120000,
     duration: "약 20분",
-    altitude: "500m",
     highlight: true,
     color: "white",
     bg: "#0D2B52",
@@ -72,7 +70,6 @@ const PRODUCTS = [
     subtitle: "프리미엄 풀 패키지",
     price: 180000,
     duration: "약 30분",
-    altitude: "800m",
     highlight: false,
     color: "#FF8A00",
     bg: "white",
@@ -231,6 +228,7 @@ export default function LandingPage() {
   const [navScrolled, setNavScrolled] = useState(false);
   const productRef = useRef<HTMLDivElement>(null);
   const { profile: snsProfile, posts: instaPosts, shorts: ytShortsManual, fetchedShorts } = useSns();
+  const heroBg = useHeroBg();
   // 자동 가져오기가 켜져있고 결과가 있으면 자동 결과 사용, 없으면 수동 등록 사용
   const ytShortsForLanding =
     snsProfile.youtubeAutoFetch && fetchedShorts.length > 0
@@ -286,17 +284,48 @@ export default function LandingPage() {
       <section
         className="relative min-h-screen flex flex-col items-center justify-center text-center px-6 overflow-hidden"
         style={{
-          background: "linear-gradient(175deg, #020d1f 0%, #0D2B52 35%, #1a4a80 60%, #2A7AE2 85%, #5ba3e8 100%)",
+          background: heroBg.imageDataUrl && heroBg.enabled
+            ? undefined
+            : "linear-gradient(175deg, #020d1f 0%, #0D2B52 35%, #1a4a80 60%, #2A7AE2 85%, #5ba3e8 100%)",
+          backgroundColor: heroBg.imageDataUrl && heroBg.enabled ? "#020d1f" : undefined,
         }}
       >
+        {/* 배경 이미지 (설정된 경우) */}
+        {heroBg.imageDataUrl && heroBg.enabled && (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={heroBg.imageDataUrl}
+              alt=""
+              aria-hidden
+              className="absolute inset-0 w-full h-full object-cover"
+              style={{ objectPosition: "center" }}
+            />
+            {/* 브랜드 그라데이션 오버레이 — 가독성 확보 */}
+            <div
+              className="absolute inset-0"
+              style={{
+                background: `linear-gradient(175deg,
+                  rgba(2,13,31,${(heroBg.overlayOpacity / 100).toFixed(2)}) 0%,
+                  rgba(13,43,82,${Math.min(1, heroBg.overlayOpacity / 100 + 0.05).toFixed(2)}) 35%,
+                  rgba(26,74,128,${Math.max(0, heroBg.overlayOpacity / 100 - 0.05).toFixed(2)}) 65%,
+                  rgba(42,122,226,${Math.max(0, heroBg.overlayOpacity / 100 - 0.15).toFixed(2)}) 100%)`,
+              }}
+            />
+          </>
+        )}
+
         {/* 구름 장식 */}
         <div
-          className="absolute inset-0 opacity-10"
+          className="absolute inset-0 opacity-10 pointer-events-none"
           style={{
             backgroundImage:
               "radial-gradient(ellipse 60% 30% at 20% 70%, white 0%, transparent 70%), radial-gradient(ellipse 40% 20% at 80% 60%, white 0%, transparent 70%)",
           }}
         />
+
+        {/* 본문 — 이미지·오버레이 위로 */}
+        <div className="relative z-10 flex flex-col items-center">
 
         {/* 뱃지 */}
         <div
@@ -348,8 +377,10 @@ export default function LandingPage() {
           </button>
         </div>
 
+        </div>{/* /relative z-10 */}
+
         {/* 스크롤 인디케이터 */}
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-white/30 animate-bounce">
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-white/30 animate-bounce z-10">
           <ChevronDown className="w-5 h-5" />
         </div>
       </section>
@@ -423,19 +454,13 @@ export default function LandingPage() {
 
                 {/* 스펙 */}
                 <div className="flex gap-4 mb-6">
-                  {[
-                    { icon: Clock, label: p.duration },
-                    { icon: Mountain, label: p.altitude },
-                  ].map(({ icon: Icon, label }) => (
-                    <div
-                      key={label}
-                      className="flex items-center gap-1.5 text-sm"
-                      style={{ color: p.highlight ? "rgba(255,255,255,0.7)" : "#6B7280" }}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                      {label}
-                    </div>
-                  ))}
+                  <div
+                    className="flex items-center gap-1.5 text-sm"
+                    style={{ color: p.highlight ? "rgba(255,255,255,0.7)" : "#6B7280" }}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    {p.duration}
+                  </div>
                 </div>
 
                 {/* 포함 사항 */}

@@ -22,8 +22,11 @@ import {
   Package,
   Plus,
   Receipt,
+  Lock,
+  Shuffle,
 } from "lucide-react";
 import { useCosts, CATEGORY_META, CostCategory } from "@/lib/costStore";
+import { useFixedCosts } from "@/lib/fixedCostStore";
 
 // ── 타입 ────────────────────────────────────────────────────────
 type Period = "daily" | "weekly" | "monthly" | "yearly";
@@ -66,14 +69,8 @@ const MONTHLY_DATA = [
 ];
 
 // ── 숫자 포맷 ───────────────────────────────────────────────────
-const fmt = (n: number) =>
-  n >= 1000000
-    ? `${(n / 1000000).toFixed(1)}백만`
-    : n >= 10000
-    ? `${Math.round(n / 10000)}만`
-    : n.toLocaleString();
-
-const fmtWon = (n: number) => `${n.toLocaleString()}원`;
+const fmt    = (n: number) => n.toLocaleString("ko-KR") + "원";
+const fmtWon = (n: number) => n.toLocaleString("ko-KR") + "원";
 
 // ── 비용 항목 ───────────────────────────────────────────────────
 const COST_ITEMS = [
@@ -203,6 +200,9 @@ export default function FinancePage() {
   const userCosts = useCosts();
   const userCostTotal = userCosts.reduce((s, e) => s + e.amount, 0);
 
+  // 고정비 스토어
+  const { items: fixedCostItems, activeTotal: fixedActiveTotal } = useFixedCosts();
+
   // 카테고리별 합산
   const userCostByCategory = useMemo(() => {
     const map: Partial<Record<CostCategory, number>> = {};
@@ -303,13 +303,13 @@ export default function FinancePage() {
             style={{ color: "#EF4444" }}
           >
             <Receipt size={14} />
-            비용 입력
+            비용 관리
             {userCostTotal > 0 && (
               <span
                 className="text-xs px-1.5 py-0.5 rounded-full font-bold"
                 style={{ background: "#FEF2F2", color: "#EF4444" }}
               >
-                +{(userCostTotal / 10000).toFixed(0)}만
+                +{userCostTotal.toLocaleString("ko-KR")}원
               </span>
             )}
           </button>
@@ -368,8 +368,8 @@ export default function FinancePage() {
           },
           {
             label: "총비용",
-            value: fmt(stats.cost),
-            sub: `비용률 ${Math.round((stats.cost / stats.revenue) * 100)}%`,
+            value: fmt(stats.cost + fixedActiveTotal),
+            sub: `비용률 ${Math.round(((stats.cost + fixedActiveTotal) / stats.revenue) * 100)}%`,
             change: -4,
             icon: BarChart2,
             bg: "#FF8A00",
@@ -378,8 +378,8 @@ export default function FinancePage() {
           },
           {
             label: "순수익",
-            value: fmt(stats.profit),
-            sub: `마진 ${stats.margin}%`,
+            value: fmt(stats.profit - fixedActiveTotal),
+            sub: `마진 ${stats.revenue > 0 ? Math.round(((stats.profit - fixedActiveTotal) / stats.revenue) * 100) : 0}%`,
             change: stats.profitChange,
             icon: TrendingUp,
             bg: "#10B981",
@@ -486,7 +486,7 @@ export default function FinancePage() {
                   </div>
                   <span className="text-xs text-gray-400 w-6 text-right">{pct}%</span>
                   <span className="text-xs font-medium text-gray-700 w-20 text-right">
-                    {fmt(p.total)}원
+                    {fmt(p.total)}
                   </span>
                   <span className="text-xs text-gray-400 w-10 text-right">{flights}건</span>
                 </div>
@@ -506,84 +506,124 @@ export default function FinancePage() {
       {/* 비용 분석 + 일별 매출 상세 */}
       <div className="grid grid-cols-5 gap-4">
         {/* 비용 분석 */}
-        <div className="col-span-2 bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+        <div className="col-span-2 bg-white rounded-2xl p-5 shadow-sm border border-gray-100 space-y-4">
           <button
-            className="w-full flex items-center justify-between mb-4"
+            className="w-full flex items-center justify-between"
             onClick={() => setExpandCost(!expandCost)}
           >
-            <h2 className="font-semibold" style={{ color: "#0D2B52" }}>
-              비용 분석
-            </h2>
+            <h2 className="font-semibold" style={{ color: "#0D2B52" }}>비용 분석</h2>
             <span className="flex items-center gap-1 text-xs text-gray-400">
-              {fmtWon(totalCostBreakdown)}
+              {fmtWon(totalCostBreakdown + fixedActiveTotal)}
               {expandCost ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </span>
           </button>
 
-          {/* 비용 스택 바 */}
-          <div className="flex rounded-lg overflow-hidden h-4 mb-4">
-            {costBreakdown.map((c) => (
-              <div
-                key={c.key as string}
-                style={{
-                  width: `${Math.round((c.total / totalCostBreakdown) * 100)}%`,
-                  backgroundColor: c.color,
-                }}
-                title={`${c.label}: ${fmtWon(c.total)}`}
-              />
-            ))}
-          </div>
+          {/* 고정비 / 변동비 합산 바 */}
+          {(() => {
+            const fixedTotal  = fixedActiveTotal;
+            const variableTotal = totalCostBreakdown;
+            const grandTotal  = fixedTotal + variableTotal;
+            if (grandTotal === 0) return null;
+            const fixedPct    = Math.round((fixedTotal  / grandTotal) * 100);
+            const varPct      = 100 - fixedPct;
+            return (
+              <div>
+                <div className="flex rounded-lg overflow-hidden h-5 mb-2">
+                  <div
+                    style={{ width: `${fixedPct}%`, background: "#2A7AE2" }}
+                    title={`고정비: ${fmtWon(fixedTotal)}`}
+                  />
+                  <div
+                    style={{ width: `${varPct}%`, background: "#FF8A00" }}
+                    title={`변동비: ${fmtWon(variableTotal)}`}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {/* 고정비 */}
+                  <button
+                    className="rounded-xl p-3 text-left hover:opacity-80 transition-opacity"
+                    style={{ background: "#EFF6FF", border: "1.5px solid #BFDBFE" }}
+                    onClick={() => router.push("/admin/finance/costs?tab=fixed")}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Lock size={12} style={{ color: "#2A7AE2" }} />
+                      <span className="text-xs font-semibold" style={{ color: "#2A7AE2" }}>고정비</span>
+                      <span className="text-xs text-blue-400 ml-auto">{fixedPct}%</span>
+                    </div>
+                    <div className="text-base font-bold" style={{ color: "#1D4ED8" }}>{fmt(fixedTotal)}</div>
+                    <div className="text-xs text-blue-400 mt-0.5">
+                      {fixedCostItems.filter((i) => i.active).length}개 항목
+                    </div>
+                  </button>
+                  {/* 변동비 */}
+                  <button
+                    className="rounded-xl p-3 text-left hover:opacity-80 transition-opacity"
+                    style={{ background: "#FFF7ED", border: "1.5px solid #FED7AA" }}
+                    onClick={() => router.push("/admin/finance/costs")}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Shuffle size={12} style={{ color: "#FF8A00" }} />
+                      <span className="text-xs font-semibold" style={{ color: "#FF8A00" }}>변동비</span>
+                      <span className="text-xs text-orange-400 ml-auto">{varPct}%</span>
+                    </div>
+                    <div className="text-base font-bold" style={{ color: "#EA580C" }}>{fmt(variableTotal)}</div>
+                    <div className="text-xs text-orange-400 mt-0.5">
+                      {userCosts.length}건 입력
+                    </div>
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
-          <div className="space-y-2.5">
+          {/* 카테고리별 상세 */}
+          <div className="space-y-2">
             {costBreakdown.map((c) => {
               const Icon = c.icon;
               const pct = Math.round((c.total / totalCostBreakdown) * 100);
               return (
                 <div key={c.key as string} className="flex items-center gap-2">
-                  <span
-                    className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{ background: `${c.color}18` }}
-                  >
+                  <span className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${c.color}18` }}>
                     <Icon size={13} style={{ color: c.color }} />
                   </span>
                   <span className="text-sm text-gray-600 flex-1">{c.label}</span>
-                  <div className="w-16">
+                  <div className="w-14">
                     <div className="h-1 rounded-full bg-gray-100 overflow-hidden">
                       <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: c.color }} />
                     </div>
                   </div>
-                  <span className="text-xs text-gray-400 w-7 text-right">{pct}%</span>
-                  <span className="text-xs font-medium text-gray-700 w-20 text-right">
-                    {fmt(c.total)}원
-                  </span>
+                  <span className="text-xs text-gray-400 w-6 text-right">{pct}%</span>
+                  <span className="text-xs font-medium text-gray-700 w-18 text-right">{fmt(c.total)}</span>
                 </div>
               );
             })}
           </div>
 
           {/* 수익률 요약 */}
-          <div className="mt-4 rounded-xl p-3" style={{ background: "#F5F7FA" }}>
+          <div className="rounded-xl p-3" style={{ background: "#F5F7FA" }}>
             <div className="grid grid-cols-3 gap-2 text-center">
               <div>
                 <div className="text-xs text-gray-400 mb-0.5">매출</div>
-                <div className="text-sm font-bold" style={{ color: "#2A7AE2" }}>
-                  {fmt(stats.revenue)}
-                </div>
+                <div className="text-sm font-bold" style={{ color: "#2A7AE2" }}>{fmt(stats.revenue)}</div>
               </div>
               <div>
-                <div className="text-xs text-gray-400 mb-0.5">비용</div>
-                <div className="text-sm font-bold" style={{ color: "#FF8A00" }}>
-                  {fmt(stats.cost)}
-                </div>
+                <div className="text-xs text-gray-400 mb-0.5">비용 합계</div>
+                <div className="text-sm font-bold" style={{ color: "#FF8A00" }}>{fmt(stats.cost + fixedActiveTotal)}</div>
               </div>
               <div>
                 <div className="text-xs text-gray-400 mb-0.5">순수익</div>
-                <div className="text-sm font-bold" style={{ color: "#10B981" }}>
-                  {fmt(stats.profit)}
-                </div>
+                <div className="text-sm font-bold" style={{ color: "#10B981" }}>{fmt(stats.profit - fixedActiveTotal)}</div>
               </div>
             </div>
           </div>
+
+          {/* 고정비 관리 바로가기 */}
+          <button
+            onClick={() => router.push("/admin/finance/costs?tab=fixed")}
+            className="w-full text-xs text-center py-2 rounded-lg border border-dashed border-blue-200 text-blue-400 hover:bg-blue-50 transition-colors"
+          >
+            고정비 항목 관리 →
+          </button>
         </div>
 
         {/* 일별 매출 상세 테이블 */}

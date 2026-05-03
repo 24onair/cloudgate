@@ -8,11 +8,9 @@ export interface Product {
   subtitle: string;
   price: number;
   duration: string;
-  altitude: string;
   color: string;
   popular: boolean;
   active: boolean;
-  maxPax: number;
   sortOrder: number;
   images: string[]; // base64 data URLs, max 3
 }
@@ -36,11 +34,10 @@ const DEFAULT_PRODUCTS: Product[] = [
     subtitle: "첫 패러글라이딩 입문",
     price: 75000,
     duration: "약 10분",
-    altitude: "300m",
     color: "#2A7AE2",
     popular: false,
     active: true,
-    maxPax: 4,
+
     sortOrder: 1,
     images: [],
   },
@@ -50,11 +47,10 @@ const DEFAULT_PRODUCTS: Product[] = [
     subtitle: "스릴 넘치는 고고도 비행",
     price: 120000,
     duration: "약 20분",
-    altitude: "500m",
     color: "#FF8A00",
     popular: true,
     active: true,
-    maxPax: 4,
+
     sortOrder: 2,
     images: [],
   },
@@ -64,11 +60,10 @@ const DEFAULT_PRODUCTS: Product[] = [
     subtitle: "프리미엄 풀 패키지",
     price: 180000,
     duration: "약 30분",
-    altitude: "800m",
     color: "#8B5CF6",
     popular: false,
     active: true,
-    maxPax: 4,
+
     sortOrder: 3,
     images: [],
   },

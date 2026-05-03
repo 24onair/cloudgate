@@ -45,11 +45,23 @@ const PILOT_SETTLEMENT = [
   { name: "이바람", flights: 5, rate: 15000, amount: 75000, status: "confirmed" },
 ];
 
-const PRODUCT_BREAKDOWN = [
-  { name: "베이직", flights: 11, revenue: 880000, color: "#2A7AE2" },
-  { name: "익스트림", flights: 4, revenue: 480000, color: "#FF8A00" },
-  { name: "VIP", flights: 4, revenue: 640000, color: "#0D2B52" },
-];
+const PRODUCT_BREAKDOWN: Record<string, { name: string; flights: number; revenue: number; color: string }[]> = {
+  today: [
+    { name: "베이직",   flights: 1, revenue:  80000, color: "#2A7AE2" },
+    { name: "익스트림", flights: 1, revenue: 120000, color: "#FF8A00" },
+    { name: "VIP",     flights: 1, revenue: 110000, color: "#0D2B52" },
+  ],
+  week: [
+    { name: "베이직",   flights: 11, revenue: 880000, color: "#2A7AE2" },
+    { name: "익스트림", flights:  4, revenue: 480000, color: "#FF8A00" },
+    { name: "VIP",     flights:  4, revenue: 640000, color: "#0D2B52" },
+  ],
+  month: [
+    { name: "베이직",   flights: 38, revenue: 3040000, color: "#2A7AE2" },
+    { name: "익스트림", flights: 18, revenue: 2160000, color: "#FF8A00" },
+    { name: "VIP",     flights: 12, revenue: 1920000, color: "#0D2B52" },
+  ],
+};
 
 const RECENT_COMPLETED = [
   { id: "BK-20260501-2233", customer: "서지훈", product: "익스트림", time: "12:18", pilot: "김하늘", total: 120000, deposit: 40000 },
@@ -102,35 +114,43 @@ function RevenueChart({ period }: { period: string }) {
         </div>
       </div>
 
-      <div className="flex items-end gap-2 h-44">
+      {/* ── 막대 영역 (고정 높이) ── */}
+      <div className="flex items-end gap-2 h-36 mb-1">
         {data.map((d) => {
-          const revenueH = d.revenue ? Math.round((d.revenue / maxRevenue) * 140) : 0;
-          const feeH = d.pilot_fee ? Math.round((d.pilot_fee / maxRevenue) * 140) : 0;
-          const isToday = d.date === "05/01";
-
+          const revenueH = d.revenue ? Math.round((d.revenue / maxRevenue) * 128) : 0;
+          const feeH     = d.pilot_fee ? Math.round((d.pilot_fee / maxRevenue) * 128) : 0;
+          // 주간·월간 뷰에서만 오늘 날짜 강조 (범례와 색상 일치를 위해 오늘 탭은 제외)
+          const isToday  = period !== "today" && d.date === "05/01";
           return (
-            <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
-              <div className="w-full flex items-end gap-0.5 h-36">
-                {/* Revenue bar */}
-                <div className="flex-1 rounded-t-md transition-all" style={{
-                  height: revenueH || 4,
-                  backgroundColor: isToday ? "#FF8A00" : "#2A7AE2",
-                  opacity: d.revenue === 0 ? 0.15 : 1,
-                }} />
-                {/* Pilot fee bar */}
-                <div className="flex-1 rounded-t-md" style={{
-                  height: feeH || 4,
-                  backgroundColor: isToday ? "#FDD9A0" : "#E5EDFD",
-                  opacity: d.pilot_fee === 0 ? 0.15 : 1,
-                }} />
-              </div>
+            <div key={d.date} className="flex-1 flex items-end gap-0.5 h-full">
+              <div className="flex-1 rounded-t-md transition-all" style={{
+                height: revenueH || 4,
+                backgroundColor: isToday ? "#FF8A00" : "#2A7AE2",
+                opacity: d.revenue === 0 ? 0.15 : 1,
+              }} />
+              <div className="flex-1 rounded-t-md" style={{
+                height: feeH || 4,
+                backgroundColor: isToday ? "#FDD9A0" : "#E5EDFD",
+                opacity: d.pilot_fee === 0 ? 0.15 : 1,
+              }} />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── 레이블 영역 (막대 아래 고정) ── */}
+      <div className="flex gap-2">
+        {data.map((d) => {
+          const isToday = period !== "today" && d.date === "05/01";
+          return (
+            <div key={d.date} className="flex-1 flex flex-col items-center gap-0.5 pt-1">
               {d.revenue > 0 && (
-                <p className="text-xs font-medium" style={{ color: isToday ? "#FF8A00" : "#2A7AE2" }}>
-                  {d.revenue.toLocaleString("ko-KR")}원
+                <p className="text-[10px] font-semibold leading-tight" style={{ color: isToday ? "#FF8A00" : "#2A7AE2" }}>
+                  {d.revenue.toLocaleString("ko-KR")}
                 </p>
               )}
-              <p className="text-xs text-gray-400">{d.date}</p>
-              <p className="text-xs font-medium" style={{ color: isToday ? "#FF8A00" : "#9CA3AF" }}>
+              <p className="text-[10px] text-gray-400">{d.date}</p>
+              <p className="text-[10px] font-medium" style={{ color: isToday ? "#FF8A00" : "#9CA3AF" }}>
                 {d.day}
               </p>
             </div>
@@ -389,7 +409,8 @@ export default function SettlementPage() {
   const netProfit = stats.revenue - stats.pilot_fee;
   const totalPilotFee = PILOT_SETTLEMENT.reduce((s, p) => s + p.amount, 0);
   const totalFlights = PILOT_SETTLEMENT.reduce((s, p) => s + p.flights, 0);
-  const totalProductRevenue = PRODUCT_BREAKDOWN.reduce((s, p) => s + p.revenue, 0);
+  const productBreakdown    = PRODUCT_BREAKDOWN[period] ?? PRODUCT_BREAKDOWN.week;
+  const totalProductRevenue = productBreakdown.reduce((s, p) => s + p.revenue, 0);
 
   const nowStr = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
@@ -520,11 +541,13 @@ export default function SettlementPage() {
         {/* Product Breakdown (1/3) */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
           <h3 className="font-semibold text-gray-900 mb-1">상품별 매출</h3>
-          <p className="text-xs text-gray-400 mb-4">이번 주 기준</p>
+          <p className="text-xs text-gray-400 mb-4">
+            {period === "today" ? "오늘 기준" : period === "week" ? "이번 주 기준" : "이번 달 기준"}
+          </p>
 
           {/* Stacked bar */}
           <div className="flex rounded-full h-3 overflow-hidden mb-4">
-            {PRODUCT_BREAKDOWN.map((p) => (
+            {productBreakdown.map((p) => (
               <div
                 key={p.name}
                 style={{
@@ -536,7 +559,7 @@ export default function SettlementPage() {
           </div>
 
           <div className="space-y-3">
-            {PRODUCT_BREAKDOWN.map((p) => (
+            {productBreakdown.map((p) => (
               <div key={p.name} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span

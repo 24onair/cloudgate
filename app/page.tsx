@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useSns, youtubeThumbnail } from "@/lib/snsStore";
 import { InstagramIcon as Instagram, YoutubeIcon as Youtube } from "@/components/SnsIcons";
-import { useHeroBg } from "@/lib/heroStore";
+import { useHeroBg, useCtaBg } from "@/lib/heroStore";
 
 // ── 데이터 ────────────────────────────────────────────────────────
 const PRODUCTS = [
@@ -229,6 +229,7 @@ export default function LandingPage() {
   const productRef = useRef<HTMLDivElement>(null);
   const { profile: snsProfile, posts: instaPosts, shorts: ytShortsManual, fetchedShorts } = useSns();
   const heroBg = useHeroBg();
+  const ctaBg  = useCtaBg();
   // 자동 가져오기가 켜져있고 결과가 있으면 자동 결과 사용, 없으면 수동 등록 사용
   const ytShortsForLanding =
     snsProfile.youtubeAutoFetch && fetchedShorts.length > 0
@@ -801,26 +802,54 @@ export default function LandingPage() {
 
       {/* ── CTA 배너 ─────────────────────────────────────────────── */}
       <section
-        className="py-20 px-6 text-center"
+        className="relative py-20 px-6 text-center overflow-hidden"
         style={{
-          background: "linear-gradient(135deg, #0D2B52 0%, #1a4a80 50%, #2A7AE2 100%)",
+          background: ctaBg.imageDataUrl && ctaBg.enabled
+            ? undefined
+            : "linear-gradient(135deg, #0D2B52 0%, #1a4a80 50%, #2A7AE2 100%)",
+          backgroundColor: ctaBg.imageDataUrl && ctaBg.enabled ? "#0D2B52" : undefined,
         }}
       >
-        <p className="text-white/50 text-sm tracking-widest mb-4">READY TO FLY?</p>
-        <h2 className="text-3xl md:text-5xl font-black text-white mb-4">
-          오늘, 하늘을 날아보세요
-        </h2>
-        <p className="text-white/60 mb-10 text-base">
-          주말 슬롯이 빠르게 마감됩니다
-        </p>
-        <button
-          onClick={() => router.push("/booking")}
-          className="inline-flex items-center gap-2 px-10 py-4 rounded-2xl text-base font-bold transition-all hover:opacity-90 hover:scale-105"
-          style={{ backgroundColor: "#FF8A00", color: "white" }}
-        >
-          지금 예약하기
-          <ArrowRight className="w-5 h-5" />
-        </button>
+        {/* 배경 이미지 */}
+        {ctaBg.imageDataUrl && ctaBg.enabled && (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={ctaBg.imageDataUrl}
+              alt=""
+              aria-hidden
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <div
+              className="absolute inset-0"
+              style={{
+                background: `linear-gradient(135deg,
+                  rgba(13,43,82,${(ctaBg.overlayOpacity / 100).toFixed(2)}) 0%,
+                  rgba(26,74,128,${Math.max(0, ctaBg.overlayOpacity / 100 - 0.05).toFixed(2)}) 50%,
+                  rgba(42,122,226,${Math.max(0, ctaBg.overlayOpacity / 100 - 0.15).toFixed(2)}) 100%)`,
+              }}
+            />
+          </>
+        )}
+
+        {/* 콘텐츠 */}
+        <div className="relative z-10">
+          <p className="text-white/50 text-sm tracking-widest mb-4">READY TO FLY?</p>
+          <h2 className="text-3xl md:text-5xl font-black text-white mb-4">
+            오늘, 하늘을 날아보세요
+          </h2>
+          <p className="text-white/60 mb-10 text-base">
+            주말 슬롯이 빠르게 마감됩니다
+          </p>
+          <button
+            onClick={() => router.push("/booking")}
+            className="inline-flex items-center gap-2 px-10 py-4 rounded-2xl text-base font-bold transition-all hover:opacity-90 hover:scale-105"
+            style={{ backgroundColor: "#FF8A00", color: "white" }}
+          >
+            지금 예약하기
+            <ArrowRight className="w-5 h-5" />
+          </button>
+        </div>
       </section>
 
       {/* ── 푸터 ─────────────────────────────────────────────────── */}

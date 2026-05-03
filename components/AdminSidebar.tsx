@@ -15,6 +15,7 @@ import {
   PlusCircle,
   Package,
   Clock,
+  Share2,
 } from "lucide-react";
 
 const menuItems = [
@@ -77,6 +78,12 @@ const menuItems = [
     sublabel: "알림",
     icon: Bell,
     href: "/admin/notifications",
+  },
+  {
+    label: "SNS관리",
+    sublabel: "인스타·유튜브",
+    icon: Share2,
+    href: "/admin/sns",
   },
 ];
 

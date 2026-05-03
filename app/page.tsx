@@ -18,7 +18,11 @@ import {
   Plane,
   Users,
   Mountain,
+  Play,
+  ExternalLink,
 } from "lucide-react";
+import { useSns, youtubeThumbnail } from "@/lib/snsStore";
+import { InstagramIcon as Instagram, YoutubeIcon as Youtube } from "@/components/SnsIcons";
 
 // ── 데이터 ────────────────────────────────────────────────────────
 const PRODUCTS = [
@@ -226,6 +230,12 @@ export default function LandingPage() {
   const router = useRouter();
   const [navScrolled, setNavScrolled] = useState(false);
   const productRef = useRef<HTMLDivElement>(null);
+  const { profile: snsProfile, posts: instaPosts, shorts: ytShortsManual, fetchedShorts } = useSns();
+  // 자동 가져오기가 켜져있고 결과가 있으면 자동 결과 사용, 없으면 수동 등록 사용
+  const ytShortsForLanding =
+    snsProfile.youtubeAutoFetch && fetchedShorts.length > 0
+      ? fetchedShorts.map((s) => ({ id: s.videoId, videoId: s.videoId, title: s.title, sortOrder: 0 }))
+      : ytShortsManual;
 
   useEffect(() => {
     const handler = () => setNavScrolled(window.scrollY > 60);
@@ -474,6 +484,158 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* ── 인스타그램 피드 ─────────────────────────────────────── */}
+      {instaPosts.length > 0 && snsProfile.instagramCount > 0 && (
+        <section className="py-20 px-6 bg-white">
+          <div className="max-w-5xl mx-auto">
+            <div className="text-center mb-10">
+              <p
+                className="text-sm font-semibold tracking-widest mb-3 flex items-center justify-center gap-2"
+                style={{ color: "#E1306C" }}
+              >
+                <Instagram className="w-4 h-4" />
+                INSTAGRAM
+              </p>
+              <h2 className="text-3xl md:text-4xl font-black" style={{ color: "#0D2B52" }}>
+                생생한 비행 순간들
+              </h2>
+              <a
+                href={snsProfile.instagramUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm mt-3 font-medium hover:underline"
+                style={{ color: "#E1306C" }}
+              >
+                {snsProfile.instagramHandle}
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+              {instaPosts.slice(0, snsProfile.instagramCount).map((post) => {
+                const content = (
+                  <div className="relative rounded-2xl overflow-hidden aspect-square group cursor-pointer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={post.imageUrl}
+                      alt={post.caption}
+                      className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                    />
+                    <div
+                      className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      style={{ background: "linear-gradient(135deg, rgba(225,48,108,0.85), rgba(245,133,41,0.85))" }}
+                    >
+                      <Instagram className="w-8 h-8 text-white" />
+                    </div>
+                    {post.caption && (
+                      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/60 to-transparent">
+                        <p className="text-white text-xs font-medium line-clamp-2">{post.caption}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+                return post.link ? (
+                  <a key={post.id} href={post.link} target="_blank" rel="noreferrer">
+                    {content}
+                  </a>
+                ) : (
+                  <div key={post.id}>{content}</div>
+                );
+              })}
+            </div>
+
+            <div className="text-center mt-8">
+              <a
+                href={snsProfile.instagramUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition-transform hover:-translate-y-0.5"
+                style={{ background: "linear-gradient(135deg, #E1306C, #F58529)" }}
+              >
+                <Instagram className="w-4 h-4" />
+                인스타그램에서 더 보기
+              </a>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── 유튜브 쇼츠 ─────────────────────────────────────────── */}
+      {ytShortsForLanding.length > 0 && snsProfile.youtubeCount > 0 && (
+        <section className="py-20 px-6" style={{ backgroundColor: "#0D2B52" }}>
+          <div className="max-w-5xl mx-auto">
+            <div className="text-center mb-10">
+              <p
+                className="text-sm font-semibold tracking-widest mb-3 flex items-center justify-center gap-2"
+                style={{ color: "#FF0000" }}
+              >
+                <Youtube className="w-4 h-4" />
+                YOUTUBE SHORTS
+              </p>
+              <h2 className="text-3xl md:text-4xl font-black text-white">
+                영상으로 만나는 구름상회
+              </h2>
+              <a
+                href={snsProfile.youtubeChannelUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm mt-3 font-medium hover:underline text-white/70"
+              >
+                {snsProfile.youtubeChannelName}
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
+              {ytShortsForLanding.slice(0, snsProfile.youtubeCount).map((s) => (
+                <a
+                  key={s.id}
+                  href={`https://youtube.com/shorts/${s.videoId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="relative rounded-2xl overflow-hidden group cursor-pointer"
+                  style={{ aspectRatio: "9/16" }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={youtubeThumbnail(s.videoId)}
+                    alt={s.title}
+                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div
+                      className="w-14 h-14 rounded-full flex items-center justify-center transition-transform group-hover:scale-110"
+                      style={{ backgroundColor: "rgba(255,0,0,0.9)" }}
+                    >
+                      <Play className="w-6 h-6 text-white fill-white ml-1" />
+                    </div>
+                  </div>
+                  {s.title && (
+                    <div className="absolute bottom-0 left-0 right-0 p-3">
+                      <p className="text-white text-xs font-medium line-clamp-2">{s.title}</p>
+                    </div>
+                  )}
+                </a>
+              ))}
+            </div>
+
+            <div className="text-center mt-8">
+              <a
+                href={snsProfile.youtubeChannelUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition-transform hover:-translate-y-0.5"
+                style={{ backgroundColor: "#FF0000" }}
+              >
+                <Youtube className="w-4 h-4" />
+                채널 구독하기
+              </a>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ── 안전 수칙 ─────────────────────────────────────────────── */}
       <section id="safety" className="py-20 px-6 bg-white">

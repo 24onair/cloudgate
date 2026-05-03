@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -11,7 +11,21 @@ import {
   CheckCircle2,
   Clock,
   ChevronRight,
+  Percent,
+  Plus,
+  X,
+  Save,
+  Trash2,
+  Info,
 } from "lucide-react";
+import {
+  useSettlement,
+  updateSettlementConfig,
+  setPilotOverride,
+  removePilotOverride,
+  type PilotShareOverride,
+} from "@/lib/settlementStore";
+import { PILOTS_META } from "@/lib/scheduleStore";
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 
@@ -112,7 +126,7 @@ function RevenueChart({ period }: { period: string }) {
               </div>
               {d.revenue > 0 && (
                 <p className="text-xs font-medium" style={{ color: isToday ? "#FF8A00" : "#2A7AE2" }}>
-                  {(d.revenue / 10000).toFixed(0)}만
+                  {d.revenue.toLocaleString("ko-KR")}원
                 </p>
               )}
               <p className="text-xs text-gray-400">{d.date}</p>
@@ -127,10 +141,249 @@ function RevenueChart({ period }: { period: string }) {
   );
 }
 
+// ─── 분배 비율 관리 카드 ──────────────────────────────────────────────────
+function SplitRatioCard() {
+  const { cfg, overrides } = useSettlement();
+  const [draft, setDraft] = useState(cfg.defaultPilotShare);
+  const [dirty, setDirty] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newOverride, setNewOverride] = useState<PilotShareOverride>({
+    pilotId: "", pilotShare: cfg.defaultPilotShare, reason: "",
+  });
+
+  // cfg가 외부에서 변경되면 draft 동기화 (단, dirty 상태가 아닐 때만)
+  useEffect(() => {
+    if (!dirty) setDraft(cfg.defaultPilotShare);
+  }, [cfg.defaultPilotShare, dirty]);
+
+  const overrideList = Object.values(overrides);
+  const availablePilots = PILOTS_META.filter((p) => !overrides[p.id]);
+
+  function saveDefault() {
+    updateSettlementConfig({ defaultPilotShare: draft });
+    setDirty(false);
+  }
+
+  function addOverride() {
+    if (!newOverride.pilotId) return;
+    setPilotOverride(newOverride);
+    setShowAdd(false);
+    setNewOverride({ pilotId: "", pilotShare: cfg.defaultPilotShare, reason: "" });
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Percent className="w-4 h-4" style={{ color: "#2A7AE2" }} />
+          <h3 className="font-semibold text-gray-900">분배 비율 관리</h3>
+          <span className="text-xs text-gray-400">파일럿 ↔ 회사 매출 분배</span>
+        </div>
+      </div>
+
+      {/* 기본 비율 (전체 일괄 적용) */}
+      <div className="rounded-xl border border-gray-100 p-4 mb-4" style={{ backgroundColor: "#F8FAFC" }}>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-bold text-gray-700">기본 분배 비율 (전체 파일럿 일괄 적용)</p>
+          {dirty && (
+            <button
+              onClick={saveDefault}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+              style={{ backgroundColor: "#0D2B52" }}
+            >
+              <Save className="w-3.5 h-3.5" /> 저장
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={draft}
+              onChange={(e) => { setDraft(Number(e.target.value)); setDirty(true); }}
+              className="w-full"
+            />
+            <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+              <span>회사 100%</span>
+              <span>파일럿 100%</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={draft}
+              onChange={(e) => { setDraft(Math.max(0, Math.min(100, Number(e.target.value) || 0))); setDirty(true); }}
+              className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center font-bold outline-none focus:ring-2 focus:ring-blue-200"
+            />
+            <span className="text-sm text-gray-500">%</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mt-3">
+          <div className="rounded-lg p-2.5 text-center" style={{ backgroundColor: "#EFF6FF" }}>
+            <p className="text-[10px] font-medium text-blue-700">파일럿</p>
+            <p className="text-xl font-black mt-0.5" style={{ color: "#2A7AE2" }}>{draft}%</p>
+          </div>
+          <div className="rounded-lg p-2.5 text-center" style={{ backgroundColor: "#FFF7ED" }}>
+            <p className="text-[10px] font-medium text-orange-700">회사</p>
+            <p className="text-xl font-black mt-0.5" style={{ color: "#FF8A00" }}>{100 - draft}%</p>
+          </div>
+        </div>
+      </div>
+
+      {/* 예외 적용 (특정 파일럿만 다른 비율) */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
+            예외 적용 파일럿
+            <span className="text-xs font-normal text-gray-400">{overrideList.length}명</span>
+          </p>
+          {availablePilots.length > 0 && !showAdd && (
+            <button
+              onClick={() => {
+                setNewOverride({ pilotId: availablePilots[0].id, pilotShare: cfg.defaultPilotShare, reason: "" });
+                setShowAdd(true);
+              }}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white"
+              style={{ backgroundColor: "#2A7AE2" }}
+            >
+              <Plus className="w-3 h-3" /> 추가
+            </button>
+          )}
+        </div>
+
+        {overrideList.length === 0 && !showAdd && (
+          <p className="text-xs text-gray-400 px-3 py-3 rounded-lg bg-gray-50 text-center">
+            모든 파일럿이 기본 비율로 정산됩니다
+          </p>
+        )}
+
+        {overrideList.map((o) => {
+          const pilot = PILOTS_META.find((p) => p.id === o.pilotId);
+          if (!pilot) return null;
+          return (
+            <div key={o.pilotId} className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-amber-100 bg-amber-50 mb-2">
+              <span
+                className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                style={{ backgroundColor: pilot.avatarColor }}
+              >
+                {pilot.initials}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-800">{pilot.name}</p>
+                {o.reason && <p className="text-[10px] text-gray-500 truncate">{o.reason}</p>}
+              </div>
+              <div className="flex items-center gap-1 text-sm">
+                <span className="font-bold" style={{ color: "#2A7AE2" }}>파일럿 {o.pilotShare}%</span>
+                <span className="text-gray-300">/</span>
+                <span className="font-bold" style={{ color: "#FF8A00" }}>회사 {100 - o.pilotShare}%</span>
+              </div>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={o.pilotShare}
+                onChange={(e) =>
+                  setPilotOverride({ ...o, pilotShare: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })
+                }
+                className="w-14 border border-gray-200 rounded-lg px-2 py-1 text-xs text-center bg-white"
+              />
+              <button
+                onClick={() => removePilotOverride(o.pilotId)}
+                className="p-1.5 rounded-lg hover:bg-red-100"
+                title="기본 비율로 되돌리기"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+              </button>
+            </div>
+          );
+        })}
+
+        {showAdd && availablePilots.length > 0 && (
+          <div className="rounded-xl border-2 border-blue-200 p-3 bg-blue-50">
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <select
+                value={newOverride.pilotId}
+                onChange={(e) => setNewOverride({ ...newOverride, pilotId: e.target.value })}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white"
+              >
+                {availablePilots.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={newOverride.pilotShare}
+                  onChange={(e) =>
+                    setNewOverride({ ...newOverride, pilotShare: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })
+                  }
+                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center bg-white"
+                />
+                <span className="text-sm text-gray-500">%</span>
+              </div>
+            </div>
+            <input
+              value={newOverride.reason ?? ""}
+              onChange={(e) => setNewOverride({ ...newOverride, reason: e.target.value })}
+              placeholder="사유 (선택, 예: 시니어 파일럿 인센티브)"
+              maxLength={40}
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white"
+            />
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={() => setShowAdd(false)}
+                className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-gray-200 bg-white"
+              >
+                취소
+              </button>
+              <button
+                onClick={addOverride}
+                className="flex-1 py-1.5 rounded-lg text-xs font-bold text-white"
+                style={{ backgroundColor: "#0D2B52" }}
+              >
+                저장
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-lg bg-gray-50 px-3 py-2 mt-3 text-[11px] text-gray-500 flex items-start gap-1.5">
+        <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
+        <span>
+          비행 1건의 매출 = 파일럿 정산 + 회사 매출. 예외 적용된 파일럿은 본인 화면에 별도 표시되지 않으며,
+          정산 확정 시 적용 비율로 자동 계산됩니다.
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
+
+function getPeriodLabel(period: string): string {
+  if (period === "today") return "2026.05.03";
+  if (period === "week")  return "04.28 ~ 05.04";
+  if (period === "month") return "2026년 5월";
+  return "";
+}
 
 export default function SettlementPage() {
   const [period, setPeriod] = useState("week");
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const stats = useMemo(() => getPeriodStats(period), [period]);
   const netProfit = stats.revenue - stats.pilot_fee;
@@ -138,30 +391,40 @@ export default function SettlementPage() {
   const totalFlights = PILOT_SETTLEMENT.reduce((s, p) => s + p.flights, 0);
   const totalProductRevenue = PRODUCT_BREAKDOWN.reduce((s, p) => s + p.revenue, 0);
 
+  const nowStr = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
   return (
     <div className="p-6 max-w-7xl">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: "#0D2B52" }}>계산대</h1>
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-2xl font-bold" style={{ color: "#0D2B52" }}>계산대</h1>
+            <span className="text-sm font-medium" style={{ color: "#2A7AE2" }}>{nowStr}</span>
+          </div>
           <p className="text-sm text-gray-400 mt-0.5">매출 & 정산 현황</p>
         </div>
         {/* Period tabs */}
-        <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
-          {PERIOD_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => setPeriod(tab.value)}
-              className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all"
-              style={
-                period === tab.value
-                  ? { backgroundColor: "#0D2B52", color: "white" }
-                  : { color: "#6B7280" }
-              }
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
+            {PERIOD_TABS.map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => setPeriod(tab.value)}
+                className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all"
+                style={
+                  period === tab.value
+                    ? { backgroundColor: "#0D2B52", color: "white" }
+                    : { color: "#6B7280" }
+                }
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs font-medium pr-1" style={{ color: "#2A7AE2" }}>
+            {getPeriodLabel(period)}
+          </span>
         </div>
       </div>
 
@@ -173,10 +436,9 @@ export default function SettlementPage() {
             <div>
               <p className="text-xs text-gray-400 mb-1">총 매출</p>
               <p className="text-2xl font-bold" style={{ color: "#0D2B52" }}>
-                {(stats.revenue / 10000).toFixed(0)}
-                <span className="text-sm font-normal text-gray-400 ml-1">만원</span>
+                {stats.revenue.toLocaleString("ko-KR")}
+                <span className="text-sm font-normal text-gray-400 ml-1">원</span>
               </p>
-              <p className="text-xs text-gray-500 mt-1">{stats.revenue.toLocaleString()}원</p>
             </div>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#EEF4FD" }}>
               <TrendingUp className="w-4 h-4" style={{ color: "#2A7AE2" }} />
@@ -215,10 +477,9 @@ export default function SettlementPage() {
             <div>
               <p className="text-xs text-gray-400 mb-1">파일럿 정산</p>
               <p className="text-2xl font-bold" style={{ color: "#0D2B52" }}>
-                {(stats.pilot_fee / 10000).toFixed(0)}
-                <span className="text-sm font-normal text-gray-400 ml-1">만원</span>
+                {stats.pilot_fee.toLocaleString("ko-KR")}
+                <span className="text-sm font-normal text-gray-400 ml-1">원</span>
               </p>
-              <p className="text-xs text-gray-500 mt-1">{stats.pilot_fee.toLocaleString()}원</p>
             </div>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#F3F4F6" }}>
               <Users className="w-4 h-4 text-gray-500" />
@@ -235,10 +496,9 @@ export default function SettlementPage() {
             <div>
               <p className="text-xs mb-1" style={{ color: "rgba(255,255,255,0.6)" }}>순수익 추정</p>
               <p className="text-2xl font-bold text-white">
-                {(netProfit / 10000).toFixed(0)}
-                <span className="text-sm font-normal ml-1" style={{ color: "rgba(255,255,255,0.6)" }}>만원</span>
+                {netProfit.toLocaleString("ko-KR")}
+                <span className="text-sm font-normal ml-1" style={{ color: "rgba(255,255,255,0.6)" }}>원</span>
               </p>
-              <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.5)" }}>{netProfit.toLocaleString()}원</p>
             </div>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: "rgba(255,255,255,0.15)" }}>
               <CreditCard className="w-4 h-4 text-white" />
@@ -288,7 +548,7 @@ export default function SettlementPage() {
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold" style={{ color: "#0D2B52" }}>
-                    {(p.revenue / 10000).toFixed(0)}만원
+                    {p.revenue.toLocaleString("ko-KR")}원
                   </p>
                   <p className="text-xs text-gray-400">
                     {Math.round((p.revenue / totalProductRevenue) * 100)}%
@@ -301,11 +561,14 @@ export default function SettlementPage() {
           <div className="border-t border-gray-100 mt-4 pt-3 flex justify-between text-sm">
             <span className="text-gray-500">합계</span>
             <span className="font-bold" style={{ color: "#0D2B52" }}>
-              {(totalProductRevenue / 10000).toFixed(0)}만원
+              {totalProductRevenue.toLocaleString("ko-KR")}원
             </span>
           </div>
         </div>
       </div>
+
+      {/* 분배 비율 관리 */}
+      <SplitRatioCard />
 
       {/* Pilot Settlement + Recent Completed */}
       <div className="grid grid-cols-2 gap-4">

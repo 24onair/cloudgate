@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   TrendingUp,
@@ -25,11 +25,12 @@ import {
   Lock,
   Shuffle,
 } from "lucide-react";
-import { useCosts, CATEGORY_META, CostCategory } from "@/lib/costStore";
+import { useCosts, type CostCategory } from "@/lib/costStore";
 import { useFixedCosts } from "@/lib/fixedCostStore";
+import { useCategories } from "@/lib/categoryStore";
 
 // ── 타입 ────────────────────────────────────────────────────────
-type Period = "daily" | "weekly" | "monthly" | "yearly";
+type Period = "daily" | "weekly" | "monthly" | "custom";
 
 interface DayData {
   date: string;
@@ -73,14 +74,13 @@ const fmt    = (n: number) => n.toLocaleString("ko-KR") + "원";
 const fmtWon = (n: number) => n.toLocaleString("ko-KR") + "원";
 
 // ── 비용 항목 ───────────────────────────────────────────────────
-const COST_ITEMS = [
-  { key: "salary" as keyof DayData, label: "파일럿 급여", icon: Users, color: "#2A7AE2" },
-  { key: "fuel" as keyof DayData, label: "연료비", icon: Wind, color: "#FF8A00" },
-  { key: "insurance" as keyof DayData, label: "보험료", icon: ShieldCheck, color: "#10B981" },
-  { key: "marketing" as keyof DayData, label: "마케팅", icon: Megaphone, color: "#8B5CF6" },
-  { key: "maintenance" as keyof DayData, label: "장비유지", icon: Wrench, color: "#F59E0B" },
-  { key: "other" as keyof DayData, label: "기타", icon: Package, color: "#6B7280" },
-];
+// icon만 고정 — label·color는 categoryStore에서 동적으로 읽음
+const CAT_ICONS: Record<string, React.ElementType> = {
+  salary: Users, fuel: Wind, insurance: ShieldCheck,
+  marketing: Megaphone, maintenance: Wrench, other: Package,
+};
+const COST_KEYS = ["salary", "fuel", "insurance", "marketing", "maintenance", "other"] as const;
+type CostKey = typeof COST_KEYS[number];
 
 const PRODUCT_ITEMS = [
   { key: "basic" as keyof DayData, label: "베이직", color: "#2A7AE2", price: 50000 },
@@ -90,7 +90,7 @@ const PRODUCT_ITEMS = [
 
 // ── 막대 차트 ───────────────────────────────────────────────────
 function BarChart({ data, period }: { data: typeof DAILY_DATA | typeof MONTHLY_DATA; period: Period }) {
-  const isMonthly = period === "monthly" || period === "yearly";
+  const isMonthly = period === "monthly" || period === "custom";
   const chartData = isMonthly ? MONTHLY_DATA : DAILY_DATA;
   const maxRevenue = Math.max(...chartData.map((d) => d.revenue));
   const maxCost = isMonthly
@@ -195,6 +195,14 @@ export default function FinancePage() {
   const router = useRouter();
   const [period, setPeriod] = useState<Period>("daily");
   const [expandCost, setExpandCost] = useState(false);
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   // 직접 입력된 비용 (localStorage)
   const userCosts = useCosts();
@@ -202,6 +210,20 @@ export default function FinancePage() {
 
   // 고정비 스토어
   const { items: fixedCostItems, activeTotal: fixedActiveTotal } = useFixedCosts();
+  const { categories } = useCategories();
+
+  // label·color를 categoryStore에서 동적으로 읽어 costItems 구성
+  const costItems = useMemo(() =>
+    COST_KEYS.map((key) => {
+      const cat = categories.find((c) => c.id === key);
+      return {
+        key: key as keyof DayData,
+        label: cat?.label ?? key,
+        color: cat?.color ?? "#6B7280",
+        icon: CAT_ICONS[key] ?? Package,
+      };
+    }),
+  [categories]);
 
   // 카테고리별 합산
   const userCostByCategory = useMemo(() => {
@@ -243,18 +265,19 @@ export default function FinancePage() {
       const profitChange = Math.round(((profit - prevProfit) / prevProfit) * 100);
       return { revenue: month.revenue, cost: month.cost, profit, margin, flights: month.flights, revenueChange, profitChange, label: "5월 (현재)" };
     }
-    // yearly
+    // custom (범위설정)
     const total = MONTHLY_DATA.reduce((s, d) => ({ revenue: s.revenue + d.revenue, cost: s.cost + d.cost, flights: s.flights + d.flights }), { revenue: 0, cost: 0, flights: 0 });
     const profit = total.revenue - total.cost;
     const margin = Math.round((profit / total.revenue) * 100);
-    return { ...total, profit, margin, revenueChange: 18, profitChange: 22, label: "2025/26 시즌" };
-  }, [period]);
+    const customLabel = customStart && customEnd ? `${customStart} ~ ${customEnd}` : "범위 미설정";
+    return { ...total, profit, margin, revenueChange: 18, profitChange: 22, label: customLabel };
+  }, [period, customStart, customEnd]);
 
   const todayData = DAILY_DATA[DAILY_DATA.length - 1];
   const totalCostToday = todayData.fuel + todayData.insurance + todayData.marketing + todayData.maintenance + todayData.salary + todayData.other;
 
   const productData = useMemo(() => {
-    const src = period === "monthly" || period === "yearly"
+    const src = period === "monthly" || period === "custom"
       ? DAILY_DATA
       : period === "weekly"
       ? DAILY_DATA
@@ -269,21 +292,41 @@ export default function FinancePage() {
 
   const costBreakdown = useMemo(() => {
     const src = period === "daily" ? [DAILY_DATA[DAILY_DATA.length - 1]] : DAILY_DATA;
-    return COST_ITEMS.map((c) => ({
+    return costItems.map((c) => ({
       ...c,
-      // 직접 입력된 비용을 해당 카테고리에 합산
       total: src.reduce((s, d) => s + (d[c.key] as number), 0) + (userCostByCategory[c.key as CostCategory] ?? 0),
     }));
-  }, [period, userCostByCategory]);
+  }, [period, userCostByCategory, costItems]);
 
   const totalCostBreakdown = costBreakdown.reduce((s, c) => s + c.total, 0);
 
   const PERIOD_TABS: { key: Period; label: string }[] = [
-    { key: "daily", label: "일간" },
-    { key: "weekly", label: "주간" },
-    { key: "monthly", label: "월간" },
-    { key: "yearly", label: "시즌" },
+    { key: "daily",   label: "일간"   },
+    { key: "weekly",  label: "주간"   },
+    { key: "monthly", label: "월간"   },
+    { key: "custom",  label: "범위설정" },
   ];
+
+  // ── 기간 레이블 ─────────────────────────────────────────────────
+  function getPeriodLabel() {
+    if (period === "daily") {
+      const d = DAILY_DATA[DAILY_DATA.length - 1].date; // "2026-05-01"
+      return d.replace(/-/g, ".");
+    }
+    if (period === "weekly") {
+      // DAILY_DATA 범위로 주간 표시
+      const first = DAILY_DATA[0].date.slice(5).replace("-", "."); // "04.25"
+      const last  = DAILY_DATA[DAILY_DATA.length - 1].date.slice(5).replace("-", "."); // "05.01"
+      return `${first} ~ ${last}`;
+    }
+    if (period === "monthly") {
+      const m = MONTHLY_DATA[MONTHLY_DATA.length - 1];
+      return m.label; // "5월" 형태 → 앞에 연도 붙임
+    }
+    // custom
+    if (customStart && customEnd) return `${customStart.replace(/-/g, ".")} ~ ${customEnd.replace(/-/g, ".")}`;
+    return "시작일 ~ 종료일 선택";
+  }
 
   return (
     <div className="p-6 space-y-6" style={{ background: "#F5F7FA", minHeight: "100vh" }}>
@@ -293,7 +336,15 @@ export default function FinancePage() {
           <h1 className="text-2xl font-bold" style={{ color: "#0D2B52" }}>
             장사리포트
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">매출·비용·수익 분석</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-sm text-gray-500">매출·비용·수익 분석</p>
+            <span className="text-gray-300">·</span>
+            <p className="text-sm font-medium" style={{ color: "#2A7AE2" }}>
+              {now.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" })}
+              {"  "}
+              {now.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {/* 비용 입력 바로가기 */}
@@ -313,21 +364,48 @@ export default function FinancePage() {
               </span>
             )}
           </button>
-          {/* 기간 탭 */}
-          <div className="flex items-center gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
-          {PERIOD_TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setPeriod(t.key)}
-              className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all"
-              style={{
-                background: period === t.key ? "#0D2B52" : "transparent",
-                color: period === t.key ? "#fff" : "#6B7280",
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
+          {/* 기간 탭 + 날짜 레이블 */}
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex items-center gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
+              {PERIOD_TABS.map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setPeriod(t.key)}
+                  className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all"
+                  style={{
+                    background: period === t.key ? "#0D2B52" : "transparent",
+                    color: period === t.key ? "#fff" : "#6B7280",
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {/* 선택된 기간 표시 */}
+            <span className="text-xs font-medium px-2" style={{ color: "#2A7AE2" }}>
+              {getPeriodLabel()}
+            </span>
+            {/* 범위설정 피커 */}
+            {period === "custom" && (
+              <div className="flex items-center gap-2 bg-white rounded-xl px-3 py-2 shadow-sm border border-gray-200">
+                <input
+                  type="date"
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  style={{ color: "#0D2B52" }}
+                />
+                <span className="text-gray-400 text-xs">~</span>
+                <input
+                  type="date"
+                  value={customEnd}
+                  min={customStart}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  style={{ color: "#0D2B52" }}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

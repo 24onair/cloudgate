@@ -10,13 +10,10 @@ import {
   Clock,
   Camera,
   Video,
-  AlertTriangle,
   CheckCircle2,
   Phone,
   User,
-  Users,
   CreditCard,
-  ArrowRight,
   X,
 } from "lucide-react";
 
@@ -28,7 +25,7 @@ const PRODUCTS = [
     subtitle: "첫 패러글라이딩 입문",
     price: 75000,
     duration: "약 10분",
-    color: "#2A7AE2",
+    color: "#4d4f46",
     features: ["탠덤 비행", "안전 교육", "기념 스티커"],
   },
   {
@@ -37,7 +34,7 @@ const PRODUCTS = [
     subtitle: "스릴 넘치는 고고도 비행",
     price: 120000,
     duration: "약 20분",
-    color: "#0D2B52",
+    color: "#23251d",
     features: ["고고도 탠덤 비행", "스릴 기동", "안전 교육"],
     popular: true,
   },
@@ -47,7 +44,7 @@ const PRODUCTS = [
     subtitle: "프리미엄 풀 패키지",
     price: 180000,
     duration: "약 30분",
-    color: "#FF8A00",
+    color: "#F54E00",
     features: ["파노라마 코스", "VIP 라운지", "사진+영상 포함"],
   },
 ];
@@ -57,7 +54,6 @@ const OPTIONS = [
   { id: "video", label: "영상 촬영", desc: "고프로 영상 편집본", price: 20000, icon: Video, forProducts: ["basic", "extreme"] },
 ];
 
-// 날씨 등급 모의 데이터 (5월 2026)
 const WEATHER: Record<string, "green" | "yellow" | "red" | null> = {
   "2026-05-03": "green", "2026-05-04": "green", "2026-05-05": "yellow",
   "2026-05-06": "green", "2026-05-07": "green", "2026-05-08": "yellow",
@@ -79,17 +75,13 @@ const WEATHER_CFG = {
 
 const TIME_SLOTS = ["09:00", "10:30", "12:00", "13:30", "15:00", "16:30"];
 const TODAY = "2026-05-02";
-
-// 5월 달력
-const MAY_START_DOW = 5; // 금
+const MAY_START_DOW = 5;
 const DAYS_IN_MAY = 31;
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
 function dateStr(day: number) {
   return `2026-05-${String(day).padStart(2, "0")}`;
 }
-
-// ── 유틸 ─────────────────────────────────────────────────────────
 function formatPrice(n: number) {
   return n.toLocaleString("ko-KR") + "원";
 }
@@ -109,15 +101,15 @@ function StepIndicator({ current }: { current: number }) {
               <div
                 className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all"
                 style={{
-                  backgroundColor: done ? "#2A7AE2" : active ? "#0D2B52" : "#E5E7EB",
-                  color: done || active ? "white" : "#9CA3AF",
+                  backgroundColor: done ? "#4d4f46" : active ? "#23251d" : "#e5e7e0",
+                  color: done || active ? "white" : "#9ea096",
                 }}
               >
                 {done ? <Check className="w-4 h-4" /> : idx}
               </div>
               <span
                 className="text-xs mt-1 font-medium"
-                style={{ color: active ? "#0D2B52" : "#9CA3AF" }}
+                style={{ color: active ? "#23251d" : "#9ea096" }}
               >
                 {label}
               </span>
@@ -125,7 +117,7 @@ function StepIndicator({ current }: { current: number }) {
             {i < steps.length - 1 && (
               <div
                 className="h-0.5 w-12 md:w-16 mb-4 mx-1"
-                style={{ backgroundColor: done ? "#2A7AE2" : "#E5E7EB" }}
+                style={{ backgroundColor: done ? "#4d4f46" : "#bfc1b7" }}
               />
             )}
           </div>
@@ -142,27 +134,18 @@ function BookingInner() {
   const initProduct = searchParams.get("product") ?? "";
 
   const [step, setStep] = useState(1);
-
-  // Step 1
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
-
-  // Step 2
   const [selectedProduct, setSelectedProduct] = useState(initProduct);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [headcount, setHeadcount] = useState(1);
-
-  // Step 3
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [requests, setRequests] = useState("");
   const [agreed, setAgreed] = useState(false);
-
-  // Step 4
   const [submitted, setSubmitted] = useState(false);
   const [bookingNo] = useState(`BK-${Date.now().toString().slice(-8)}`);
 
-  // 상품 정보
   const product = PRODUCTS.find((p) => p.id === selectedProduct);
   const optionTotal = selectedOptions.reduce((s, oid) => {
     const opt = OPTIONS.find((o) => o.id === oid);
@@ -183,27 +166,23 @@ function BookingInner() {
     );
   }
 
-  function handleSubmit() {
-    setSubmitted(true);
-  }
-
   // ── Step 1: 날짜·시간 ────────────────────────────────────────
   const step1 = (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-bold mb-1" style={{ color: "#0D2B52" }}>날짜를 선택해 주세요</h2>
-        <p className="text-sm text-gray-400">🟢 최적 🟡 보통 🔴 비행 불가 (기상 예보 기준)</p>
+        <h2 className="text-lg font-bold mb-1" style={{ color: "#23251d" }}>날짜를 선택해 주세요</h2>
+        <p className="text-sm" style={{ color: "#65675e" }}>🟢 최적 🟡 보통 🔴 비행 불가 (기상 예보 기준)</p>
       </div>
 
       {/* 달력 */}
-      <div className="bg-white rounded-2xl p-4 border border-gray-100">
+      <div className="rounded-2xl p-4 border" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
         <div className="flex items-center justify-between mb-4">
-          <p className="font-bold" style={{ color: "#0D2B52" }}>2026년 5월</p>
+          <p className="font-bold" style={{ color: "#23251d" }}>2026년 5월</p>
         </div>
         <div className="grid grid-cols-7 mb-2">
           {DAY_LABELS.map((d, i) => (
             <div key={d} className="text-center text-xs font-medium py-1"
-              style={{ color: i === 0 ? "#EF4444" : i === 6 ? "#2A7AE2" : "#9CA3AF" }}>
+              style={{ color: i === 0 ? "#EF4444" : i === 6 ? "#4d4f46" : "#9ea096" }}>
               {d}
             </div>
           ))}
@@ -225,13 +204,13 @@ function BookingInner() {
                 onClick={() => { setSelectedDate(date); setSelectedTime(""); }}
                 className="flex flex-col items-center rounded-xl py-1.5 transition-all"
                 style={{
-                  backgroundColor: isSelected ? "#0D2B52" : "transparent",
+                  backgroundColor: isSelected ? "#23251d" : "transparent",
                   opacity: isPast || w === "red" ? 0.3 : 1,
                   cursor: isPast || !w || w === "red" ? "not-allowed" : "pointer",
                 }}
               >
                 <span className="text-xs mb-0.5" style={{
-                  color: isSelected ? "white" : dow === 0 ? "#EF4444" : dow === 6 ? "#2A7AE2" : "#374151",
+                  color: isSelected ? "white" : dow === 0 ? "#EF4444" : dow === 6 ? "#4d4f46" : "#374151",
                   fontWeight: isSelected ? 700 : 400,
                   fontSize: 12,
                 }}>
@@ -272,7 +251,7 @@ function BookingInner() {
       {/* 시간 선택 */}
       {selectedDate && weather !== "red" && (
         <div>
-          <p className="text-sm font-semibold mb-3" style={{ color: "#0D2B52" }}>시간을 선택해 주세요</p>
+          <p className="text-sm font-semibold mb-3" style={{ color: "#23251d" }}>시간을 선택해 주세요</p>
           <div className="grid grid-cols-3 gap-2">
             {TIME_SLOTS.map((t) => (
               <button
@@ -280,9 +259,9 @@ function BookingInner() {
                 onClick={() => setSelectedTime(t)}
                 className="py-3 rounded-xl text-sm font-medium border-2 transition-all"
                 style={{
-                  borderColor: selectedTime === t ? "#0D2B52" : "#E5E7EB",
-                  backgroundColor: selectedTime === t ? "#0D2B52" : "white",
-                  color: selectedTime === t ? "white" : "#374151",
+                  borderColor: selectedTime === t ? "#23251d" : "#bfc1b7",
+                  backgroundColor: selectedTime === t ? "#23251d" : "#fdfdf8",
+                  color: selectedTime === t ? "white" : "#4d4f46",
                 }}
               >
                 {t}
@@ -297,7 +276,7 @@ function BookingInner() {
   // ── Step 2: 상품 선택 ─────────────────────────────────────────
   const step2 = (
     <div className="space-y-5">
-      <h2 className="text-lg font-bold" style={{ color: "#0D2B52" }}>상품을 선택해 주세요</h2>
+      <h2 className="text-lg font-bold" style={{ color: "#23251d" }}>상품을 선택해 주세요</h2>
 
       <div className="space-y-3">
         {PRODUCTS.map((p) => (
@@ -309,33 +288,33 @@ function BookingInner() {
             }}
             className="w-full text-left rounded-2xl p-5 border-2 transition-all"
             style={{
-              borderColor: selectedProduct === p.id ? p.color : "#E5E7EB",
-              backgroundColor: selectedProduct === p.id ? `${p.color}08` : "white",
+              borderColor: selectedProduct === p.id ? p.color : "#bfc1b7",
+              backgroundColor: selectedProduct === p.id ? `${p.color}0d` : "#fdfdf8",
             }}
           >
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="font-bold text-base" style={{ color: "#0D2B52" }}>{p.name}</span>
+                  <span className="font-bold text-base" style={{ color: "#23251d" }}>{p.name}</span>
                   {"popular" in p && p.popular && (
-                    <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: "#FF8A00" }}>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: "#F54E00" }}>
                       인기
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-gray-400 mb-2">{p.subtitle}</p>
-                <div className="flex items-center gap-3 text-xs text-gray-500">
+                <p className="text-xs mb-2" style={{ color: "#65675e" }}>{p.subtitle}</p>
+                <div className="flex items-center gap-3 text-xs" style={{ color: "#9ea096" }}>
                   <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{p.duration}</span>
                 </div>
               </div>
               <div className="text-right flex-shrink-0 ml-4">
                 <p className="text-xl font-black" style={{ color: p.color }}>{formatPrice(p.price)}</p>
-                <p className="text-xs text-gray-400">1인 기준</p>
+                <p className="text-xs" style={{ color: "#9ea096" }}>1인 기준</p>
                 <div
                   className="w-5 h-5 rounded-full border-2 mt-2 ml-auto flex items-center justify-center"
                   style={{
-                    borderColor: selectedProduct === p.id ? p.color : "#D1D5DB",
-                    backgroundColor: selectedProduct === p.id ? p.color : "white",
+                    borderColor: selectedProduct === p.id ? p.color : "#bfc1b7",
+                    backgroundColor: selectedProduct === p.id ? p.color : "#fdfdf8",
                   }}
                 >
                   {selectedProduct === p.id && <Check className="w-3 h-3 text-white" />}
@@ -347,22 +326,24 @@ function BookingInner() {
       </div>
 
       {/* 인원 */}
-      <div className="bg-white rounded-2xl p-5 border border-gray-100">
-        <p className="text-sm font-semibold mb-3" style={{ color: "#0D2B52" }}>인원 선택</p>
+      <div className="rounded-2xl p-5 border" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
+        <p className="text-sm font-semibold mb-3" style={{ color: "#23251d" }}>인원 선택</p>
         <div className="flex items-center gap-4">
           <button
             onClick={() => setHeadcount(Math.max(1, headcount - 1))}
-            className="w-10 h-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-500 font-bold hover:border-gray-400"
+            className="w-10 h-10 rounded-xl border-2 flex items-center justify-center font-bold transition-all"
+            style={{ borderColor: "#bfc1b7", color: "#4d4f46" }}
           >
             −
           </button>
           <div className="text-center">
-            <p className="text-2xl font-black" style={{ color: "#0D2B52" }}>{headcount}</p>
-            <p className="text-xs text-gray-400">명</p>
+            <p className="text-2xl font-black" style={{ color: "#23251d" }}>{headcount}</p>
+            <p className="text-xs" style={{ color: "#9ea096" }}>명</p>
           </div>
           <button
             onClick={() => setHeadcount(headcount + 1)}
-            className="w-10 h-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-500 font-bold hover:border-gray-400"
+            className="w-10 h-10 rounded-xl border-2 flex items-center justify-center font-bold transition-all"
+            style={{ borderColor: "#bfc1b7", color: "#4d4f46" }}
           >
             +
           </button>
@@ -371,10 +352,10 @@ function BookingInner() {
 
       {/* 옵션 */}
       {selectedProduct && (
-        <div className="bg-white rounded-2xl p-5 border border-gray-100">
-          <p className="text-sm font-semibold mb-3" style={{ color: "#0D2B52" }}>추가 옵션 (선택)</p>
+        <div className="rounded-2xl p-5 border" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
+          <p className="text-sm font-semibold mb-3" style={{ color: "#23251d" }}>추가 옵션 (선택)</p>
           {selectedProduct === "vip" ? (
-            <p className="text-sm text-gray-400">VIP 상품에는 사진+영상 풀 패키지가 포함되어 있습니다.</p>
+            <p className="text-sm" style={{ color: "#65675e" }}>VIP 상품에는 사진+영상 풀 패키지가 포함되어 있습니다.</p>
           ) : (
             <div className="space-y-2">
               {OPTIONS.filter((o) => o.forProducts.includes(selectedProduct)).map((opt) => {
@@ -386,18 +367,18 @@ function BookingInner() {
                     onClick={() => toggleOption(opt.id)}
                     className="w-full flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all text-left"
                     style={{
-                      borderColor: isSelected ? "#2A7AE2" : "#E5E7EB",
-                      backgroundColor: isSelected ? "#EFF6FF" : "white",
+                      borderColor: isSelected ? "#23251d" : "#bfc1b7",
+                      backgroundColor: isSelected ? "#eeefe9" : "#fdfdf8",
                     }}
                   >
-                    <Icon className="w-4 h-4 flex-shrink-0" style={{ color: isSelected ? "#2A7AE2" : "#9CA3AF" }} />
+                    <Icon className="w-4 h-4 flex-shrink-0" style={{ color: isSelected ? "#23251d" : "#9ea096" }} />
                     <div className="flex-1">
-                      <p className="text-sm font-medium" style={{ color: isSelected ? "#2A7AE2" : "#374151" }}>
+                      <p className="text-sm font-medium" style={{ color: isSelected ? "#23251d" : "#4d4f46" }}>
                         {opt.label}
                       </p>
-                      <p className="text-xs text-gray-400">{opt.desc}</p>
+                      <p className="text-xs" style={{ color: "#9ea096" }}>{opt.desc}</p>
                     </div>
-                    <p className="text-sm font-bold" style={{ color: isSelected ? "#2A7AE2" : "#374151" }}>
+                    <p className="text-sm font-bold" style={{ color: isSelected ? "#23251d" : "#4d4f46" }}>
                       +{formatPrice(opt.price)}
                     </p>
                   </button>
@@ -410,8 +391,8 @@ function BookingInner() {
 
       {/* 소계 */}
       {product && (
-        <div className="rounded-2xl p-4" style={{ backgroundColor: "#F5F7FA", border: "1px solid #E5E7EB" }}>
-          <div className="flex justify-between text-sm text-gray-500 mb-1">
+        <div className="rounded-2xl p-4 border" style={{ backgroundColor: "#eeefe9", borderColor: "#bfc1b7" }}>
+          <div className="flex justify-between text-sm mb-1" style={{ color: "#65675e" }}>
             <span>{product.name} × {headcount}인</span>
             <span>{formatPrice(product.price * headcount)}</span>
           </div>
@@ -419,13 +400,13 @@ function BookingInner() {
             const opt = OPTIONS.find((o) => o.id === oid);
             if (!opt) return null;
             return (
-              <div key={oid} className="flex justify-between text-sm text-gray-500 mb-1">
+              <div key={oid} className="flex justify-between text-sm mb-1" style={{ color: "#65675e" }}>
                 <span>{opt.label}</span>
                 <span>+{formatPrice(opt.price)}</span>
               </div>
             );
           })}
-          <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between font-bold" style={{ color: "#0D2B52" }}>
+          <div className="border-t mt-2 pt-2 flex justify-between font-bold" style={{ borderColor: "#bfc1b7", color: "#23251d" }}>
             <span>합계</span>
             <span>{formatPrice(productTotal)}</span>
           </div>
@@ -437,59 +418,59 @@ function BookingInner() {
   // ── Step 3: 정보 입력 ─────────────────────────────────────────
   const step3 = (
     <div className="space-y-5">
-      <h2 className="text-lg font-bold" style={{ color: "#0D2B52" }}>예약자 정보를 입력해 주세요</h2>
+      <h2 className="text-lg font-bold" style={{ color: "#23251d" }}>예약자 정보를 입력해 주세요</h2>
 
-      <div className="bg-white rounded-2xl p-5 border border-gray-100 space-y-4">
+      <div className="rounded-2xl p-5 border space-y-4" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
         <div>
-          <label className="block text-sm font-medium mb-1.5" style={{ color: "#374151" }}>
+          <label className="block text-sm font-medium mb-1.5" style={{ color: "#4d4f46" }}>
             이름 <span className="text-red-500">*</span>
           </label>
-          <div className="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-3 focus-within:border-blue-400">
-            <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <div className="flex items-center gap-3 border rounded-xl px-4 py-3 focus-within:border-[#23251d] transition-colors" style={{ borderColor: "#bfc1b7" }}>
+            <User className="w-4 h-4 flex-shrink-0" style={{ color: "#9ea096" }} />
             <input
               type="text"
               placeholder="홍길동"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="flex-1 text-sm outline-none"
-              style={{ color: "#0D2B52" }}
+              className="flex-1 text-sm outline-none bg-transparent"
+              style={{ color: "#23251d" }}
             />
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1.5" style={{ color: "#374151" }}>
+          <label className="block text-sm font-medium mb-1.5" style={{ color: "#4d4f46" }}>
             연락처 <span className="text-red-500">*</span>
           </label>
-          <div className="flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-3 focus-within:border-blue-400">
-            <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <div className="flex items-center gap-3 border rounded-xl px-4 py-3 focus-within:border-[#23251d] transition-colors" style={{ borderColor: "#bfc1b7" }}>
+            <Phone className="w-4 h-4 flex-shrink-0" style={{ color: "#9ea096" }} />
             <input
               type="tel"
               placeholder="010-0000-0000"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              className="flex-1 text-sm outline-none"
-              style={{ color: "#0D2B52" }}
+              className="flex-1 text-sm outline-none bg-transparent"
+              style={{ color: "#23251d" }}
             />
           </div>
-          <p className="text-xs text-gray-400 mt-1.5">비행 가능 여부 확인 문자를 발송합니다</p>
+          <p className="text-xs mt-1.5" style={{ color: "#9ea096" }}>비행 가능 여부 확인 문자를 발송합니다</p>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1.5" style={{ color: "#374151" }}>
+          <label className="block text-sm font-medium mb-1.5" style={{ color: "#4d4f46" }}>
             요청 사항 (선택)
           </label>
           <textarea
             placeholder="알레르기, 공포증, 체중 외 특이 사항 등"
             value={requests}
             onChange={(e) => setRequests(e.target.value)}
-            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none resize-none focus:border-blue-400"
-            style={{ color: "#0D2B52", minHeight: 80 }}
+            className="w-full border rounded-xl px-4 py-3 text-sm outline-none resize-none focus:border-[#bfc1b7] bg-transparent"
+            style={{ color: "#23251d", minHeight: 80, borderColor: "#bfc1b7" }}
           />
         </div>
       </div>
 
       {/* 안전 수칙 동의 */}
-      <div className="bg-white rounded-2xl p-5 border border-gray-100">
-        <p className="text-sm font-semibold mb-3" style={{ color: "#0D2B52" }}>안전 수칙 확인</p>
+      <div className="rounded-2xl p-5 border" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
+        <p className="text-sm font-semibold mb-3" style={{ color: "#23251d" }}>안전 수칙 확인</p>
         <div className="space-y-2 mb-4">
           {[
             "체중 40kg~90kg 이내 탑승",
@@ -497,7 +478,7 @@ function BookingInner() {
             "임신 중이 아님",
             "음주 상태가 아님",
           ].map((rule) => (
-            <div key={rule} className="flex items-center gap-2 text-sm text-gray-600">
+            <div key={rule} className="flex items-center gap-2 text-sm" style={{ color: "#4d4f46" }}>
               <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-green-500" />
               {rule}
             </div>
@@ -508,22 +489,22 @@ function BookingInner() {
             onClick={() => setAgreed(!agreed)}
             className="w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all"
             style={{
-              borderColor: agreed ? "#2A7AE2" : "#D1D5DB",
-              backgroundColor: agreed ? "#2A7AE2" : "white",
+              borderColor: agreed ? "#23251d" : "#bfc1b7",
+              backgroundColor: agreed ? "#23251d" : "#fdfdf8",
             }}
           >
             {agreed && <Check className="w-3 h-3 text-white" />}
           </div>
-          <span className="text-sm text-gray-600 leading-relaxed">
+          <span className="text-sm leading-relaxed" style={{ color: "#4d4f46" }}>
             위 안전 수칙을 모두 확인하였으며, 예약 취소 및 환불 정책에 동의합니다.
-            <span className="text-blue-500 ml-1 underline cursor-pointer">환불 정책 보기</span>
+            <span className="ml-1 underline cursor-pointer" style={{ color: "#4d4f46" }}>환불 정책 보기</span>
           </span>
         </label>
       </div>
 
       {/* 예약 요약 */}
-      <div className="rounded-2xl p-4" style={{ backgroundColor: "#F5F7FA" }}>
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">예약 요약</p>
+      <div className="rounded-2xl p-4 border" style={{ backgroundColor: "#eeefe9", borderColor: "#bfc1b7" }}>
+        <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#9ea096" }}>예약 요약</p>
         {[
           { label: "날짜·시간", value: `${selectedDate.slice(5).replace("-", "월 ")}일 ${selectedTime}` },
           { label: "상품", value: `${product?.name} × ${headcount}인` },
@@ -531,13 +512,13 @@ function BookingInner() {
           { label: "현장 결제", value: formatPrice(remaining) },
         ].map((row) => (
           <div key={row.label} className="flex justify-between text-sm mb-1.5">
-            <span className="text-gray-500">{row.label}</span>
-            <span className="font-medium" style={{ color: "#0D2B52" }}>{row.value}</span>
+            <span style={{ color: "#65675e" }}>{row.label}</span>
+            <span className="font-medium" style={{ color: "#23251d" }}>{row.value}</span>
           </div>
         ))}
-        <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between font-bold text-base" style={{ color: "#0D2B52" }}>
+        <div className="border-t mt-2 pt-2 flex justify-between font-bold text-base" style={{ borderColor: "#bfc1b7", color: "#23251d" }}>
           <span>총 결제금액</span>
-          <span style={{ color: "#2A7AE2" }}>{formatPrice(productTotal)}</span>
+          <span>{formatPrice(productTotal)}</span>
         </div>
       </div>
     </div>
@@ -545,146 +526,151 @@ function BookingInner() {
 
   // ── Step 4: 확인 / 완료 ──────────────────────────────────────
   const step4 = submitted ? (
-        <div className="flex flex-col items-center justify-center py-10 text-center">
-          <div
-            className="w-20 h-20 rounded-full flex items-center justify-center mb-6"
-            style={{ backgroundColor: "#EFF6FF" }}
-          >
-            <CheckCircle2 className="w-10 h-10" style={{ color: "#2A7AE2" }} />
+    <div className="flex flex-col items-center justify-center py-10 text-center">
+      <div
+        className="w-20 h-20 rounded-full flex items-center justify-center mb-6"
+        style={{ backgroundColor: "#eeefe9" }}
+      >
+        <CheckCircle2 className="w-10 h-10" style={{ color: "#23251d" }} />
+      </div>
+      <h2 className="text-2xl font-black mb-2" style={{ color: "#23251d" }}>예약 완료!</h2>
+      <p className="text-sm mb-6" style={{ color: "#65675e" }}>
+        예약번호 <span className="font-bold" style={{ color: "#23251d" }}>{bookingNo}</span>
+      </p>
+      <div className="w-full rounded-2xl p-5 border text-left space-y-3 mb-6" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
+        {[
+          { label: "예약자", value: name },
+          { label: "연락처", value: phone },
+          { label: "날짜·시간", value: `${selectedDate.slice(5).replace("-", "월 ")}일 ${selectedTime}` },
+          { label: "상품", value: `${product?.name} × ${headcount}인` },
+          { label: "예약금", value: formatPrice(deposit) },
+        ].map((row) => (
+          <div key={row.label} className="flex justify-between text-sm">
+            <span style={{ color: "#9ea096" }}>{row.label}</span>
+            <span className="font-medium" style={{ color: "#23251d" }}>{row.value}</span>
           </div>
-          <h2 className="text-2xl font-black mb-2" style={{ color: "#0D2B52" }}>예약 완료!</h2>
-          <p className="text-gray-500 text-sm mb-6">
-            예약번호 <span className="font-bold" style={{ color: "#2A7AE2" }}>{bookingNo}</span>
-          </p>
-          <div className="w-full bg-white rounded-2xl p-5 border border-gray-100 text-left space-y-3 mb-6">
-            {[
-              { label: "예약자", value: name },
-              { label: "연락처", value: phone },
-              { label: "날짜·시간", value: `${selectedDate.slice(5).replace("-", "월 ")}일 ${selectedTime}` },
-              { label: "상품", value: `${product?.name} × ${headcount}인` },
-              { label: "예약금", value: formatPrice(deposit) },
-            ].map((row) => (
-              <div key={row.label} className="flex justify-between text-sm">
-                <span className="text-gray-400">{row.label}</span>
-                <span className="font-medium" style={{ color: "#0D2B52" }}>{row.value}</span>
-              </div>
-            ))}
-          </div>
-          <div
-            className="w-full rounded-2xl px-5 py-4 text-sm text-blue-700 text-left mb-6"
-            style={{ backgroundColor: "#EFF6FF" }}
-          >
-            <p className="font-bold mb-1">다음 단계</p>
-            <p className="text-blue-600">• 예약금 결제 링크가 {phone}으로 발송됩니다</p>
-            <p className="text-blue-600">• 비행 당일 오전 7시에 날씨 확인 문자를 드립니다</p>
-            <p className="text-blue-600">• 현장 도착 20분 전 체크인 부탁드립니다</p>
-          </div>
-          <button
-            onClick={() => router.push("/")}
-            className="w-full py-4 rounded-2xl font-bold text-white"
-            style={{ backgroundColor: "#0D2B52" }}
-          >
-            홈으로 돌아가기
-          </button>
-        </div>
+        ))}
+      </div>
+      <div
+        className="w-full rounded-2xl px-5 py-4 text-sm text-left mb-6"
+        style={{ backgroundColor: "#eeefe9", borderColor: "#bfc1b7" }}
+      >
+        <p className="font-bold mb-1" style={{ color: "#23251d" }}>다음 단계</p>
+        <p style={{ color: "#4d4f46" }}>• 예약금 결제 링크가 {phone}으로 발송됩니다</p>
+        <p style={{ color: "#4d4f46" }}>• 비행 당일 오전 7시에 날씨 확인 문자를 드립니다</p>
+        <p style={{ color: "#4d4f46" }}>• 현장 도착 20분 전 체크인 부탁드립니다</p>
+      </div>
+      <button
+        onClick={() => router.push("/")}
+        className="w-full py-4 rounded-2xl font-bold text-white"
+        style={{ backgroundColor: "#1e1f23" }}
+      >
+        홈으로 돌아가기
+      </button>
+    </div>
   ) : (
-      <div className="space-y-5">
-        <h2 className="text-lg font-bold" style={{ color: "#0D2B52" }}>예약 내용을 확인해 주세요</h2>
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 space-y-3">
-          {[
-            { label: "예약자", value: name },
-            { label: "연락처", value: phone },
-            { label: "날짜·시간", value: `${selectedDate.slice(5).replace("-", "월 ")}일 ${selectedTime}` },
-            { label: "상품", value: `${product?.name} × ${headcount}인` },
-            { label: "추가 옵션", value: selectedOptions.length > 0 ? selectedOptions.map((oid) => OPTIONS.find((o) => o.id === oid)?.label).join(", ") : "없음" },
-          ].map((row) => (
-            <div key={row.label} className="flex justify-between text-sm border-b border-gray-50 pb-2 last:border-0 last:pb-0">
-              <span className="text-gray-400">{row.label}</span>
-              <span className="font-medium" style={{ color: "#0D2B52" }}>{row.value}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* 결제 요약 */}
-        <div className="rounded-2xl p-5" style={{ backgroundColor: "#F5F7FA" }}>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">결제 정보</p>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-500">{product?.name} × {headcount}인</span>
-              <span style={{ color: "#0D2B52" }}>{formatPrice((product?.price ?? 0) * headcount)}</span>
-            </div>
-            {selectedOptions.map((oid) => {
-              const opt = OPTIONS.find((o) => o.id === oid);
-              return opt ? (
-                <div key={oid} className="flex justify-between">
-                  <span className="text-gray-500">{opt.label}</span>
-                  <span style={{ color: "#0D2B52" }}>+{formatPrice(opt.price)}</span>
-                </div>
-              ) : null;
-            })}
-            <div className="border-t border-gray-200 pt-2 mt-1 space-y-1">
-              <div className="flex justify-between font-bold text-base">
-                <span style={{ color: "#0D2B52" }}>총액</span>
-                <span style={{ color: "#0D2B52" }}>{formatPrice(productTotal)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">지금 결제 (예약금 30%)</span>
-                <span className="font-bold" style={{ color: "#2A7AE2" }}>{formatPrice(deposit)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">현장 결제</span>
-                <span style={{ color: "#6B7280" }}>{formatPrice(remaining)}</span>
-              </div>
-            </div>
+    <div className="space-y-5">
+      <h2 className="text-lg font-bold" style={{ color: "#23251d" }}>예약 내용을 확인해 주세요</h2>
+      <div className="rounded-2xl p-5 border space-y-3" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
+        {[
+          { label: "예약자", value: name },
+          { label: "연락처", value: phone },
+          { label: "날짜·시간", value: `${selectedDate.slice(5).replace("-", "월 ")}일 ${selectedTime}` },
+          { label: "상품", value: `${product?.name} × ${headcount}인` },
+          { label: "추가 옵션", value: selectedOptions.length > 0 ? selectedOptions.map((oid) => OPTIONS.find((o) => o.id === oid)?.label).join(", ") : "없음" },
+        ].map((row) => (
+          <div key={row.label} className="flex justify-between text-sm border-b pb-2 last:border-0 last:pb-0" style={{ borderColor: "#e5e7e0" }}>
+            <span style={{ color: "#9ea096" }}>{row.label}</span>
+            <span className="font-medium" style={{ color: "#23251d" }}>{row.value}</span>
           </div>
-        </div>
+        ))}
+      </div>
 
-        {/* 결제 수단 (Mock UI) */}
-        <div className="bg-white rounded-2xl p-5 border border-gray-100">
-          <p className="text-sm font-semibold mb-3" style={{ color: "#0D2B52" }}>결제 수단</p>
-          <div className="flex gap-2">
-            {["카드 결제", "카카오페이", "네이버페이"].map((method, i) => (
-              <button
-                key={method}
-                className="flex-1 py-3 rounded-xl text-xs font-medium border-2 transition-all"
-                style={{
-                  borderColor: i === 0 ? "#0D2B52" : "#E5E7EB",
-                  backgroundColor: i === 0 ? "#0D2B52" : "white",
-                  color: i === 0 ? "white" : "#6B7280",
-                }}
-              >
-                {method}
-              </button>
-            ))}
+      {/* 결제 요약 */}
+      <div className="rounded-2xl p-5 border" style={{ backgroundColor: "#eeefe9", borderColor: "#bfc1b7" }}>
+        <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#9ea096" }}>결제 정보</p>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span style={{ color: "#65675e" }}>{product?.name} × {headcount}인</span>
+            <span style={{ color: "#23251d" }}>{formatPrice((product?.price ?? 0) * headcount)}</span>
+          </div>
+          {selectedOptions.map((oid) => {
+            const opt = OPTIONS.find((o) => o.id === oid);
+            return opt ? (
+              <div key={oid} className="flex justify-between">
+                <span style={{ color: "#65675e" }}>{opt.label}</span>
+                <span style={{ color: "#23251d" }}>+{formatPrice(opt.price)}</span>
+              </div>
+            ) : null;
+          })}
+          <div className="border-t pt-2 mt-1 space-y-1" style={{ borderColor: "#bfc1b7" }}>
+            <div className="flex justify-between font-bold text-base">
+              <span style={{ color: "#23251d" }}>총액</span>
+              <span style={{ color: "#23251d" }}>{formatPrice(productTotal)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span style={{ color: "#9ea096" }}>지금 결제 (예약금 30%)</span>
+              <span className="font-bold" style={{ color: "#23251d" }}>{formatPrice(deposit)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span style={{ color: "#9ea096" }}>현장 결제</span>
+              <span style={{ color: "#65675e" }}>{formatPrice(remaining)}</span>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* 결제 수단 */}
+      <div className="rounded-2xl p-5 border" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
+        <p className="text-sm font-semibold mb-3" style={{ color: "#23251d" }}>결제 수단</p>
+        <div className="flex gap-2">
+          {["카드 결제", "카카오페이", "네이버페이"].map((method, i) => (
+            <button
+              key={method}
+              className="flex-1 py-3 rounded-xl text-xs font-medium border-2 transition-all"
+              style={{
+                borderColor: i === 0 ? "#23251d" : "#bfc1b7",
+                backgroundColor: i === 0 ? "#1e1f23" : "#fdfdf8",
+                color: i === 0 ? "white" : "#65675e",
+              }}
+            >
+              {method}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 
   // ── Render ──────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#F5F7FA" }}>
+    <div className="min-h-screen" style={{ backgroundColor: "#eeefe9" }}>
       {/* 헤더 */}
       <div
         className="sticky top-0 z-30 px-4 h-14 flex items-center justify-between border-b"
-        style={{ backgroundColor: "white", borderColor: "#F3F4F6" }}
+        style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}
       >
         <div className="flex items-center gap-3">
           {!submitted && (
             <button
               onClick={() => (step === 1 ? router.push("/") : setStep(step - 1))}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100"
+              className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+              style={{ backgroundColor: "#e5e7e0" }}
             >
-              <ChevronLeft className="w-4 h-4 text-gray-500" />
+              <ChevronLeft className="w-4 h-4" style={{ color: "#4d4f46" }} />
             </button>
           )}
           <div className="flex items-center gap-2">
-            <Wind className="w-4 h-4" style={{ color: "#FF8A00" }} />
-            <span className="font-bold text-sm" style={{ color: "#0D2B52" }}>구름상회 예약</span>
+            <Wind className="w-4 h-4" style={{ color: "#F54E00" }} />
+            <span className="font-bold text-sm" style={{ color: "#23251d" }}>구름상회 예약</span>
           </div>
         </div>
-        <button onClick={() => router.push("/")} className="p-1.5 hover:bg-gray-100 rounded-lg">
-          <X className="w-4 h-4 text-gray-400" />
+        <button
+          onClick={() => router.push("/")}
+          className="p-1.5 rounded-lg transition-colors"
+          style={{ backgroundColor: "transparent" }}
+        >
+          <X className="w-4 h-4" style={{ color: "#9ea096" }} />
         </button>
       </div>
 
@@ -714,16 +700,16 @@ function BookingInner() {
                   (step === 3 && !canNext3)
                 }
                 className="w-full py-4 rounded-2xl font-bold text-white text-base transition-all flex items-center justify-center gap-2 disabled:opacity-40"
-                style={{ backgroundColor: "#0D2B52" }}
+                style={{ backgroundColor: "#1e1f23" }}
               >
                 다음 단계
                 <ChevronRight className="w-5 h-5" />
               </button>
             ) : (
               <button
-                onClick={handleSubmit}
+                onClick={() => setSubmitted(true)}
                 className="w-full py-4 rounded-2xl font-bold text-white text-base transition-all flex items-center justify-center gap-2"
-                style={{ backgroundColor: "#FF8A00" }}
+                style={{ backgroundColor: "#F54E00" }}
               >
                 <CreditCard className="w-5 h-5" />
                 {formatPrice(deposit)} 예약금 결제하기
@@ -736,7 +722,6 @@ function BookingInner() {
   );
 }
 
-// ── Suspense 래퍼 ─────────────────────────────────────────────────
 export default function BookingPage() {
   return (
     <Suspense>

@@ -1,29 +1,59 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #0D2B52;
+  /* ── PostHog-inspired 디자인 시스템 ── */
 
-  /* 구름상회 브랜드 컬러 */
-  --cloud-blue: #2A7AE2;
-  --deep-navy: #0D2B52;
-  --pilot-orange: #FF8A00;
-  --mist-blue: #F4F8FF;
-  --light-gray: #F5F7FA;
+  /* Surface & Background */
+  --bg-parchment:   #fdfdf8;   /* 메인 페이지 배경 */
+  --bg-sage-cream:  #eeefe9;   /* 서브 섹션 배경 */
+  --bg-sage-light:  #e5e7e0;   /* 버튼·카드 서피스 */
+  --bg-warm-tan:    #d4c9b8;   /* 강조 버튼 배경 */
+  --bg-hover:       #f4f4f4;   /* 호버 배경 */
+
+  /* Text */
+  --text-primary:   #4d4f46;   /* Olive Ink — 본문 */
+  --text-dark:      #23251d;   /* Deep Olive — 헤딩·링크 */
+  --text-muted:     #65675e;   /* Muted Olive — 보조 텍스트 */
+  --text-placeholder: #9ea096; /* Sage Placeholder */
+
+  /* Brand */
+  --orange:         #F54E00;   /* PostHog Orange — hover 전용 */
+  --orange-amber:   #F7A501;   /* Amber Gold — 다크 버튼 hover */
+  --cta-dark:       #1e1f23;   /* Dark CTA 버튼 */
+
+  /* Border */
+  --border-sage:    #bfc1b7;   /* 기본 보더 */
+  --border-light:   #b6b7af;   /* 서브 보더 */
+  --border-gold:    #b17816;   /* 강조 버튼 보더 */
+
+  /* Admin용 브랜드 (관리자 UI 유지) */
+  --cloud-blue:     #2A7AE2;
+  --deep-navy:      #0D2B52;
+  --pilot-orange:   #FF8A00;
+  --light-gray:     #F5F7FA;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-cloud-blue: var(--cloud-blue);
-  --color-deep-navy: var(--deep-navy);
+  --color-parchment:    var(--bg-parchment);
+  --color-sage-cream:   var(--bg-sage-cream);
+  --color-sage-light:   var(--bg-sage-light);
+  --color-olive-ink:    var(--text-primary);
+  --color-deep-olive:   var(--text-dark);
+  --color-posthog-orange: var(--orange);
+  --color-cta-dark:     var(--cta-dark);
+  --color-sage-border:  var(--border-sage);
+  --color-cloud-blue:   var(--cloud-blue);
+  --color-deep-navy:    var(--deep-navy);
   --color-pilot-orange: var(--pilot-orange);
-  --color-mist-blue: var(--mist-blue);
-  --color-light-gray: var(--light-gray);
+  --color-light-gray:   var(--light-gray);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: "Pretendard", "Apple SD Gothic Neo", Arial, Helvetica, sans-serif;
+  background: var(--bg-parchment);
+  color: var(--text-primary);
+  font-family: var(--font-ibm-plex-sans), "IBM Plex Sans", -apple-system, system-ui,
+    "Segoe UI", Helvetica Neue, Arial, sans-serif;
 }
+
+/* ── 공통 유틸 ── */
+.hover-orange:hover { color: var(--orange) !important; }

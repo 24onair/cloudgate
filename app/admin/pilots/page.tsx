@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useSchedules, useScheduleNotes, updatePilotSchedule, updatePilotNote, type AllSchedules } from "@/lib/scheduleStore";
+import { getSettlementConfig } from "@/lib/settlementStore";
 import {
   Plus,
   X,
@@ -22,6 +24,11 @@ import {
   Coffee,
   Home,
   Ban,
+  Camera,
+  ShieldCheck,
+  UserX,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 // ── 타입 ────────────────────────────────────────────────────────
@@ -42,6 +49,8 @@ interface MonthSchedule {
   [date: string]: ScheduleStatus; // "2026-05-DD" → status
 }
 
+type InactiveReason = "resignation" | "retirement" | "contract_end" | "other";
+
 interface Pilot {
   id: string;
   name: string;
@@ -58,112 +67,44 @@ interface Pilot {
   maxFlightsPerDay: number;
   schedule: MonthSchedule;
   memo: string;
+  // 퇴직 관련
+  active: boolean;
+  inactiveReason?: InactiveReason;
+  inactiveNote?: string;
+  inactiveDate?: string;
 }
 
-// ── 목업 데이터 ─────────────────────────────────────────────────
-const PILOTS: Pilot[] = [
-  {
-    id: "p1",
-    name: "박구름",
-    initials: "박",
-    avatarColor: "#2A7AE2",
-    phone: "010-1234-5678",
-    email: "park@gureum.co.kr",
-    joinDate: "2022-03-15",
-    todayStatus: "working",
-    flightsTotal: 1284,
-    flightsThisMonth: 52,
-    flightsToday: 4,
-    maxFlightsPerDay: 6,
-    memo: "시니어 파일럿. VIP 담당 우선.",
-    licenses: [
-      { id: "l1", name: "패러글라이딩 조종면허", number: "PG-2019-0341", issuedBy: "한국활공협회", expiresAt: "2026-09-30", status: "valid", daysLeft: 152 },
-      { id: "l2", name: "민간항공조종사 자격증", number: "CA-2021-1102", issuedBy: "국토교통부", expiresAt: "2026-05-22", status: "expiring_critical", daysLeft: 21 },
-      { id: "l3", name: "비행안전 교관 자격", number: "IS-2023-0088", issuedBy: "한국항공안전협회", expiresAt: "2027-03-01", status: "valid", daysLeft: 304 },
-    ],
-    schedule: {
-      "2026-05-01": "working", "2026-05-02": "working", "2026-05-03": "off",
-      "2026-05-04": "working", "2026-05-05": "working", "2026-05-06": "working",
-      "2026-05-07": "working", "2026-05-08": "standby", "2026-05-09": "working",
-      "2026-05-10": "off", "2026-05-11": "working", "2026-05-12": "working",
-    },
-  },
-  {
-    id: "p2",
-    name: "김하늘",
-    initials: "김",
-    avatarColor: "#10B981",
-    phone: "010-2345-6789",
-    email: "kim@gureum.co.kr",
-    joinDate: "2023-06-01",
-    todayStatus: "working",
-    flightsTotal: 628,
-    flightsThisMonth: 38,
-    flightsToday: 2,
-    maxFlightsPerDay: 5,
-    memo: "주말 체험비행 전담. SNS 홍보 담당.",
-    licenses: [
-      { id: "l4", name: "패러글라이딩 조종면허", number: "PG-2021-0812", issuedBy: "한국활공협회", expiresAt: "2026-05-08", status: "expiring_critical", daysLeft: 7 },
-      { id: "l5", name: "레저스포츠 지도자", number: "LS-2022-0459", issuedBy: "문화체육관광부", expiresAt: "2026-06-15", status: "expiring_soon", daysLeft: 45 },
-    ],
-    schedule: {
-      "2026-05-01": "working", "2026-05-02": "standby", "2026-05-03": "off",
-      "2026-05-04": "working", "2026-05-05": "working", "2026-05-06": "etc",
-      "2026-05-07": "etc", "2026-05-08": "working", "2026-05-09": "working",
-      "2026-05-10": "off", "2026-05-11": "standby", "2026-05-12": "working",
-    },
-  },
-  {
-    id: "p3",
-    name: "이바람",
-    initials: "이",
-    avatarColor: "#FF8A00",
-    phone: "010-3456-7890",
-    email: "lee@gureum.co.kr",
-    joinDate: "2024-01-10",
-    todayStatus: "standby",
-    flightsTotal: 312,
-    flightsThisMonth: 24,
-    flightsToday: 0,
-    maxFlightsPerDay: 4,
-    memo: "신규 파일럿. 교육비행 진행 중.",
-    licenses: [
-      { id: "l6", name: "패러글라이딩 조종면허", number: "PG-2023-1241", issuedBy: "한국활공협회", expiresAt: "2027-01-20", status: "valid", daysLeft: 264 },
-    ],
-    schedule: {
-      "2026-05-01": "standby", "2026-05-02": "working", "2026-05-03": "off",
-      "2026-05-04": "standby", "2026-05-05": "working", "2026-05-06": "working",
-      "2026-05-07": "working", "2026-05-08": "off", "2026-05-09": "standby",
-      "2026-05-10": "off", "2026-05-11": "working", "2026-05-12": "working",
-    },
-  },
-  {
-    id: "p4",
-    name: "최하람",
-    initials: "최",
-    avatarColor: "#8B5CF6",
-    phone: "010-4567-8901",
-    email: "choi@gureum.co.kr",
-    joinDate: "2021-09-20",
-    todayStatus: "etc",
-    flightsTotal: 1891,
-    flightsThisMonth: 0,
-    flightsToday: 0,
-    maxFlightsPerDay: 6,
-    memo: "시즌 휴가 중 (5/1~5/15). 복직 후 VIP 배정 예정.",
-    licenses: [
-      { id: "l7", name: "패러글라이딩 조종면허", number: "PG-2017-0122", issuedBy: "한국활공협회", expiresAt: "2026-05-03", status: "expiring_critical", daysLeft: 2 },
-      { id: "l8", name: "민간항공조종사 자격증", number: "CA-2019-0573", issuedBy: "국토교통부", expiresAt: "2027-08-10", status: "valid", daysLeft: 466 },
-      { id: "l9", name: "비행안전 교관 자격", number: "IS-2020-0211", issuedBy: "한국항공안전협회", expiresAt: "2026-06-30", status: "expiring_soon", daysLeft: 60 },
-    ],
-    schedule: {
-      "2026-05-01": "etc", "2026-05-02": "etc", "2026-05-03": "etc",
-      "2026-05-04": "etc", "2026-05-05": "etc", "2026-05-06": "etc",
-      "2026-05-07": "etc", "2026-05-08": "etc", "2026-05-09": "etc",
-      "2026-05-10": "etc", "2026-05-11": "etc", "2026-05-12": "etc",
-    },
-  },
-];
+// ── DB → UI 매핑 ─────────────────────────────────────────────────
+const AVATAR_COLORS = ["#2A7AE2", "#10B981", "#FF8A00", "#8B5CF6", "#EF4444", "#F59E0B", "#06B6D4"];
+function avatarColorFromId(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffffff;
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function mapDbPilot(p: any): Pilot {
+  return {
+    id: p.id,
+    name: p.name ?? "",
+    initials: (p.name ?? "?")[0],
+    avatarColor: avatarColorFromId(p.id ?? ""),
+    phone: p.phone ?? "",
+    email: p.email ?? "",
+    joinDate: p.join_date ?? "",
+    todayStatus: "working" as ScheduleStatus,
+    flightsTotal: p.flights_total ?? 0,
+    flightsThisMonth: p.flights_this_month ?? 0,
+    flightsToday: p.flights_today ?? 0,
+    maxFlightsPerDay: p.max_flights_per_day ?? 6,
+    memo: p.memo ?? "",
+    active: p.status !== "inactive",
+    inactiveReason: p.inactive_reason as InactiveReason | undefined,
+    inactiveNote: p.inactive_note ?? undefined,
+    inactiveDate: p.inactive_date ?? undefined,
+    licenses: [],
+    schedule: {},
+  };
+}
 
 // ── 상수 ────────────────────────────────────────────────────────
 const SCHEDULE_CFG: Record<ScheduleStatus, { label: string; color: string; bg: string; icon: typeof Clock }> = {
@@ -178,6 +119,13 @@ const LICENSE_CFG: Record<LicenseStatus, { label: string; color: string; bg: str
   expiring_soon: { label: "만료예정", color: "#F59E0B", bg: "#FFFBEB", icon: AlertTriangle },
   expiring_critical: { label: "긴급만료", color: "#EF4444", bg: "#FEF2F2", icon: AlertCircle },
   expired: { label: "만료됨", color: "#6B7280", bg: "#F3F4F6", icon: Ban },
+};
+
+const INACTIVE_REASON_CFG: Record<InactiveReason, { label: string; color: string }> = {
+  resignation:   { label: "이직",     color: "#6366F1" },
+  retirement:    { label: "퇴사",     color: "#EF4444" },
+  contract_end:  { label: "계약만료", color: "#F59E0B" },
+  other:         { label: "기타",     color: "#6B7280" },
 };
 
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -306,10 +254,116 @@ function PilotCard({ pilot, onClick }: { pilot: Pilot; onClick: () => void }) {
   );
 }
 
+// ── 퇴직 처리 확인 모달 ─────────────────────────────────────────
+function DeactivateModal({
+  pilot,
+  onConfirm,
+  onCancel,
+}: {
+  pilot: Pilot;
+  onConfirm: (reason: InactiveReason, note: string) => void;
+  onCancel: () => void;
+}) {
+  const [reason, setReason] = useState<InactiveReason>("resignation");
+  const [note, setNote] = useState("");
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 z-[60]" onClick={onCancel} />
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 pointer-events-none">
+        <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl pointer-events-auto">
+          {/* 헤더 */}
+          <div className="px-6 pt-6 pb-4 flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "#FEF2F2" }}>
+              <UserX size={18} style={{ color: "#EF4444" }} />
+            </div>
+            <div>
+              <h3 className="font-bold text-base" style={{ color: "#0D2B52" }}>퇴직 처리</h3>
+              <p className="text-sm text-gray-500 mt-0.5">
+                <span className="font-semibold" style={{ color: "#0D2B52" }}>{pilot.name}</span> 파일럿을 비활성 처리합니다
+              </p>
+            </div>
+          </div>
+
+          <div className="px-6 pb-4 space-y-4">
+            {/* 안내 */}
+            <div className="rounded-xl px-4 py-3 text-xs" style={{ background: "#FFF7ED", color: "#92400E" }}>
+              퇴직 처리 후 파일럿은 목록에서 숨겨지지만, 비행 기록·정산 이력은 보존됩니다. 필요 시 복직 처리할 수 있습니다.
+            </div>
+
+            {/* 사유 선택 */}
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">퇴직 사유</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(Object.entries(INACTIVE_REASON_CFG) as [InactiveReason, { label: string; color: string }][]).map(([key, cfg]) => (
+                  <button
+                    key={key}
+                    onClick={() => setReason(key)}
+                    className="py-2.5 rounded-xl text-sm font-medium border-2 transition-all"
+                    style={{
+                      borderColor: reason === key ? cfg.color : "#E5E7EB",
+                      background: reason === key ? `${cfg.color}12` : "white",
+                      color: reason === key ? cfg.color : "#9CA3AF",
+                    }}
+                  >
+                    {cfg.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 메모 */}
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">비고 <span className="normal-case font-normal">(선택)</span></p>
+              <input
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="예: 타사 이직, 개인사정 등"
+                maxLength={50}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-gray-400"
+                style={{ color: "#0D2B52" }}
+              />
+            </div>
+          </div>
+
+          {/* 버튼 */}
+          <div className="flex gap-2 px-6 pb-6">
+            <button
+              onClick={onCancel}
+              className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-500 hover:bg-gray-50"
+            >
+              취소
+            </button>
+            <button
+              onClick={() => onConfirm(reason, note)}
+              className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white"
+              style={{ background: "#EF4444" }}
+            >
+              퇴직 처리
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // 상세 패널
-function DetailPanel({ pilot, onClose }: { pilot: Pilot; onClose: () => void }) {
+function DetailPanel({
+  pilot,
+  onClose,
+  onDeactivate,
+  onReactivate,
+}: {
+  pilot: Pilot;
+  onClose: () => void;
+  onDeactivate: (reason: InactiveReason, note: string) => void;
+  onReactivate: () => void;
+}) {
   const [editMode, setEditMode] = useState(false);
   const [memo, setMemo] = useState(pilot.memo);
+  const [showDeactivate, setShowDeactivate] = useState(false);
 
   // 스케줄은 공유 스토어에서 읽기/쓰기
   const allSchedules = useSchedules();
@@ -351,14 +405,16 @@ function DetailPanel({ pilot, onClose }: { pilot: Pilot; onClose: () => void }) 
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setEditMode(!editMode)}
-              className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"
-              style={{ color: "#0D2B52" }}
-            >
-              <Edit3 size={13} />
-              {editMode ? "저장" : "편집"}
-            </button>
+            {pilot.active ? (
+              <button
+                onClick={() => setEditMode(!editMode)}
+                className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"
+                style={{ color: "#0D2B52" }}
+              >
+                <Edit3 size={13} />
+                {editMode ? "저장" : "편집"}
+              </button>
+            ) : null}
             <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
               <X size={18} className="text-gray-400" />
             </button>
@@ -531,8 +587,69 @@ function DetailPanel({ pilot, onClose }: { pilot: Pilot; onClose: () => void }) 
               })}
             </div>
           </section>
+
+          {/* ── 퇴직 / 복직 ── */}
+          <section className="border-t border-gray-100 pt-5">
+            {pilot.active ? (
+              <button
+                onClick={() => setShowDeactivate(true)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed text-sm font-medium transition-colors hover:bg-red-50"
+                style={{ borderColor: "#FCA5A5", color: "#EF4444" }}
+              >
+                <UserX size={15} />
+                퇴직 처리
+              </button>
+            ) : (
+              <div className="space-y-3">
+                {/* 퇴직 정보 배너 */}
+                <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "#F3F4F6", border: "1px solid #E5E7EB" }}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <UserX size={14} className="text-gray-400" />
+                    <span className="font-semibold text-gray-500">비활성 파일럿</span>
+                    {pilot.inactiveReason && (
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full font-medium"
+                        style={{
+                          background: `${INACTIVE_REASON_CFG[pilot.inactiveReason].color}15`,
+                          color: INACTIVE_REASON_CFG[pilot.inactiveReason].color,
+                        }}
+                      >
+                        {INACTIVE_REASON_CFG[pilot.inactiveReason].label}
+                      </span>
+                    )}
+                  </div>
+                  {pilot.inactiveDate && (
+                    <p className="text-xs text-gray-400">{pilot.inactiveDate} 처리</p>
+                  )}
+                  {pilot.inactiveNote && (
+                    <p className="text-xs text-gray-500 mt-0.5">사유: {pilot.inactiveNote}</p>
+                  )}
+                </div>
+                <button
+                  onClick={onReactivate}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed text-sm font-medium transition-colors hover:bg-green-50"
+                  style={{ borderColor: "#6EE7B7", color: "#10B981" }}
+                >
+                  <CheckCircle2 size={15} />
+                  복직 처리
+                </button>
+              </div>
+            )}
+          </section>
         </div>
       </div>
+
+      {/* 퇴직 확인 모달 */}
+      {showDeactivate && (
+        <DeactivateModal
+          pilot={pilot}
+          onConfirm={(reason, note) => {
+            setShowDeactivate(false);
+            onDeactivate(reason, note);
+          }}
+          onCancel={() => setShowDeactivate(false)}
+        />
+      )}
     </>
   );
 }
@@ -542,14 +659,16 @@ function TeamScheduleEditModal({
   date,
   allSchedules,
   allNotes,
+  activePilots,
   onClose,
 }: {
   date: string;
   allSchedules: AllSchedules;
   allNotes: Record<string, Record<string, string>>;
+  activePilots: Pilot[];
   onClose: () => void;
 }) {
-  const PILOT_META = PILOTS.map((p) => ({ id: p.id, name: p.name, color: p.avatarColor, initials: p.initials, fallback: p.schedule }));
+  const PILOT_META = activePilots.map((p) => ({ id: p.id, name: p.name, color: p.avatarColor, initials: p.initials, fallback: p.schedule }));
 
   const [statuses, setStatuses] = useState<Record<string, ScheduleStatus>>(() => {
     const init: Record<string, ScheduleStatus> = {};
@@ -659,8 +778,8 @@ function TeamScheduleEditModal({
 }
 
 // ── 팀 통합 달력 ────────────────────────────────────────────────
-function TeamCalendar({ allSchedules, allNotes }: { allSchedules: AllSchedules; allNotes: Record<string, Record<string, string>> }) {
-  const PILOT_META = PILOTS.map((p) => ({ id: p.id, name: p.name, color: p.avatarColor, fallback: p.schedule }));
+function TeamCalendar({ allSchedules, allNotes, activePilots }: { allSchedules: AllSchedules; allNotes: Record<string, Record<string, string>>; activePilots: Pilot[] }) {
+  const PILOT_META = activePilots.map((p) => ({ id: p.id, name: p.name, color: p.avatarColor, fallback: p.schedule }));
 
   const [viewYear, setViewYear] = useState(2026);
   const [viewMonth, setViewMonth] = useState(5);
@@ -814,6 +933,7 @@ function TeamCalendar({ allSchedules, allNotes }: { allSchedules: AllSchedules; 
           date={editDate}
           allSchedules={allSchedules}
           allNotes={allNotes}
+          activePilots={activePilots}
           onClose={() => setEditDate(null)}
         />
       )}
@@ -822,77 +942,342 @@ function TeamCalendar({ allSchedules, allNotes }: { allSchedules: AllSchedules; 
 }
 
 // ── 등록 모달 ────────────────────────────────────────────────────
-function AddPilotModal({ onClose }: { onClose: () => void }) {
+function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: () => void }) {
+  const defaultShare = typeof window !== "undefined"
+    ? getSettlementConfig().defaultPilotShare : 60;
+
+  // 기본 정보
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [joinDate, setJoinDate] = useState("");
+  // 자격 · 보험
+  const [licenseNo, setLicenseNo] = useState("");
+  const [insuranceNo, setInsuranceNo] = useState("");
+  const [insuranceExpiry, setInsuranceExpiry] = useState("");
+  // 사진
+  const [photo, setPhoto] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  // 정산
+  const [useCustomShare, setUseCustomShare] = useState(false);
+  const [customShare, setCustomShare] = useState(defaultShare);
+  const [reason, setReason] = useState("");
+
+  // 전화번호 자동 포맷 (숫자만 입력 → 010-0000-0000)
+  function handlePhone(raw: string) {
+    const d = raw.replace(/\D/g, "").slice(0, 11);
+    let fmt = d;
+    if (d.length > 7)      fmt = `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+    else if (d.length > 3) fmt = `${d.slice(0, 3)}-${d.slice(3)}`;
+    setPhone(fmt);
+  }
+
+  // 사진 선택
+  function handlePhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setPhoto(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function submit() {
+    if (!name.trim() || !phone.trim()) return;
+    await fetch("/api/pilots", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim() || null,
+        join_date: joinDate || null,
+        memo: reason.trim() || null,
+        status: "active",
+      }),
+    });
+    onSaved?.();
+    onClose();
+  }
+
+  // 공통 인풋 스타일
+  const inputCls = "w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-gray-400 bg-white";
+  const inputStyle = { color: "#0D2B52" };
+  const labelCls = "block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5";
+
   return (
-    <>
-      <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-        <div className="bg-white rounded-2xl w-full max-w-md mx-4 p-6 shadow-2xl">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-bold" style={{ color: "#0D2B52" }}>파일럿 등록</h2>
-            <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
-              <X size={18} className="text-gray-400" />
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[92vh] overflow-y-auto">
+
+        {/* 헤더 */}
+        <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-bold" style={{ color: "#0D2B52" }}>파일럿 등록</h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
+            <X size={18} className="text-gray-400" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-6">
+
+          {/* ── 프로필 사진 ── */}
+          <div className="flex flex-col items-center">
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="relative w-24 h-24 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1.5 overflow-hidden hover:border-gray-400 transition-colors group"
+              style={{ backgroundColor: photo ? "transparent" : "#F9FAFB" }}
+            >
+              {photo ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photo} alt="프로필" className="absolute inset-0 w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <Camera size={18} className="text-white" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Camera size={20} className="text-gray-300" />
+                  <span className="text-xs text-gray-400">사진 등록</span>
+                </>
+              )}
             </button>
+            <p className="text-xs text-gray-400 mt-2">클릭하여 프로필 사진 등록 (1장)</p>
           </div>
-          <div className="space-y-3">
-            {[
-              { label: "이름", placeholder: "홍길동", type: "text" },
-              { label: "전화번호", placeholder: "010-0000-0000", type: "tel" },
-              { label: "이메일", placeholder: "pilot@gureum.co.kr", type: "email" },
-              { label: "입사일", placeholder: "2026-05-01", type: "date" },
-            ].map((f) => (
-              <div key={f.label}>
-                <label className="block text-sm font-medium text-gray-600 mb-1">{f.label}</label>
+
+          {/* ── 기본 정보 ── */}
+          <div>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <User size={12} /> 기본 정보
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className={labelCls}>이름 <span className="text-red-400 normal-case">*</span></label>
                 <input
-                  type={f.type}
-                  placeholder={f.placeholder}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{ color: "#0D2B52" }}
+                  type="text"
+                  placeholder="홍길동"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className={inputCls}
+                  style={inputStyle}
                 />
               </div>
-            ))}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">일일 최대 비행 횟수</label>
-              <select
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none"
-                style={{ color: "#0D2B52" }}
-              >
-                {[3, 4, 5, 6].map((n) => (
-                  <option key={n} value={n}>{n}회</option>
-                ))}
-              </select>
+              <div>
+                <label className={labelCls}>전화번호 <span className="text-red-400 normal-case">*</span></label>
+                <input
+                  type="tel"
+                  placeholder="01012345678"
+                  value={phone}
+                  onChange={(e) => handlePhone(e.target.value)}
+                  className={inputCls}
+                  style={inputStyle}
+                />
+                <p className="text-xs text-gray-400 mt-1">숫자만 입력하면 자동으로 000-0000-0000 형식으로 변환됩니다</p>
+              </div>
+              <div>
+                <label className={labelCls}>이메일</label>
+                <input
+                  type="email"
+                  placeholder="pilot@gureum.co.kr"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className={inputCls}
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>입사일</label>
+                <input
+                  type="date"
+                  value={joinDate}
+                  onChange={(e) => setJoinDate(e.target.value)}
+                  className={inputCls}
+                  style={inputStyle}
+                />
+              </div>
             </div>
           </div>
-          <div className="flex gap-2 mt-6">
-            <button
-              onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-500 hover:bg-gray-50"
-            >
-              취소
-            </button>
-            <button
-              className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white"
-              style={{ background: "#0D2B52" }}
-              onClick={onClose}
-            >
-              등록
-            </button>
+
+          {/* ── 자격 · 보험 ── */}
+          <div>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <ShieldCheck size={12} /> 자격 · 보험
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className={labelCls}>자격증 번호</label>
+                <input
+                  type="text"
+                  placeholder="PG-2024-0000"
+                  value={licenseNo}
+                  onChange={(e) => setLicenseNo(e.target.value)}
+                  className={inputCls}
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>보험증서 번호</label>
+                <input
+                  type="text"
+                  placeholder="INS-2024-000000"
+                  value={insuranceNo}
+                  onChange={(e) => setInsuranceNo(e.target.value)}
+                  className={inputCls}
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>보험 유효기간</label>
+                <input
+                  type="date"
+                  value={insuranceExpiry}
+                  onChange={(e) => setInsuranceExpiry(e.target.value)}
+                  className={inputCls}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── 정산 설정 ── */}
+          <div className="border-t border-gray-100 pt-4">
+            <label className="flex items-center gap-2 cursor-pointer mb-2">
+              <input
+                type="checkbox"
+                checked={useCustomShare}
+                onChange={(e) => setUseCustomShare(e.target.checked)}
+                className="w-4 h-4 rounded"
+              />
+              <span className="text-sm font-medium text-gray-700">개별 분배 비율 적용</span>
+              <span className="text-xs text-gray-400">기본 {defaultShare}% / {100 - defaultShare}%</span>
+            </label>
+            {useCustomShare && (
+              <div className="space-y-2 pl-6 mt-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 w-14">파일럿</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={customShare}
+                    onChange={(e) => setCustomShare(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                    className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center bg-white"
+                    style={{ color: "#0D2B52" }}
+                  />
+                  <span className="text-xs text-gray-500">%</span>
+                  <span className="text-xs text-gray-300">/</span>
+                  <span className="text-xs text-gray-500">회사 {100 - customShare}%</span>
+                </div>
+                <input
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="사유 (선택)"
+                  maxLength={40}
+                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs"
+                  style={{ color: "#374151" }}
+                />
+              </div>
+            )}
           </div>
         </div>
+
+        {/* 푸터 버튼 */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-100 flex gap-2 px-6 py-4">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-500 hover:bg-gray-50"
+          >
+            취소
+          </button>
+          <button
+            onClick={submit}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white"
+            style={{ background: "#0D2B52" }}
+          >
+            등록
+          </button>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
 
 // ── 메인 ────────────────────────────────────────────────────────
 export default function PilotsPage() {
+  const [pilots, setPilots] = useState<Pilot[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Pilot | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
   const allSchedules = useSchedules();
   const allNotes = useScheduleNotes();
 
+  const fetchPilots = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/pilots");
+      const data = await res.json();
+      if (Array.isArray(data)) setPilots(data.map(mapDbPilot));
+    } catch (e) {
+      console.error("파일럿 조회 실패", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchPilots(); }, [fetchPilots]);
+
+  const activePilots   = useMemo(() => pilots.filter((p) => p.active), [pilots]);
+  const inactivePilots = useMemo(() => pilots.filter((p) => !p.active), [pilots]);
+
+  async function deactivatePilot(id: string, reason: InactiveReason, note: string) {
+    // 낙관적 UI 업데이트
+    setPilots((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? { ...p, active: false, inactiveReason: reason, inactiveNote: note, inactiveDate: TODAY_STR }
+          : p
+      )
+    );
+    setSelected(null);
+    // API 저장
+    await fetch(`/api/pilots/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: "inactive",
+        inactive_reason: reason,
+        inactive_note: note,
+        inactive_date: TODAY_STR,
+      }),
+    });
+  }
+
+  async function reactivatePilot(id: string) {
+    // 낙관적 UI 업데이트
+    setPilots((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? { ...p, active: true, inactiveReason: undefined, inactiveNote: undefined, inactiveDate: undefined }
+          : p
+      )
+    );
+    setSelected(null);
+    // API 저장
+    await fetch(`/api/pilots/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: "active",
+        inactive_reason: null,
+        inactive_note: null,
+        inactive_date: null,
+      }),
+    });
+  }
+
   const alerts = useMemo(() => {
     const result: { pilot: Pilot; license: License }[] = [];
-    for (const pilot of PILOTS) {
+    for (const pilot of activePilots) {
       for (const lic of pilot.licenses) {
         if (lic.status === "expiring_critical" || lic.status === "expired") {
           result.push({ pilot, license: lic });
@@ -900,11 +1285,11 @@ export default function PilotsPage() {
       }
     }
     return result.sort((a, b) => a.license.daysLeft - b.license.daysLeft);
-  }, []);
+  }, [activePilots]);
 
   const warnAlerts = useMemo(() => {
     const result: { pilot: Pilot; license: License }[] = [];
-    for (const pilot of PILOTS) {
+    for (const pilot of activePilots) {
       for (const lic of pilot.licenses) {
         if (lic.status === "expiring_soon") {
           result.push({ pilot, license: lic });
@@ -912,14 +1297,14 @@ export default function PilotsPage() {
       }
     }
     return result;
-  }, []);
+  }, [activePilots]);
 
   const todaySummary = useMemo(() => {
-    const working = PILOTS.filter((p) => p.todayStatus === "working").length;
-    const standby = PILOTS.filter((p) => p.todayStatus === "standby").length;
-    const totalFlights = PILOTS.reduce((s, p) => s + p.flightsToday, 0);
+    const working = activePilots.filter((p) => p.todayStatus === "working").length;
+    const standby = activePilots.filter((p) => p.todayStatus === "standby").length;
+    const totalFlights = activePilots.reduce((s, p) => s + p.flightsToday, 0);
     return { working, standby, totalFlights };
-  }, []);
+  }, [activePilots]);
 
   return (
     <div className="p-6 space-y-5" style={{ background: "#F5F7FA", minHeight: "100vh" }}>
@@ -942,7 +1327,7 @@ export default function PilotsPage() {
       {/* 오늘 요약 */}
       <div className="grid grid-cols-4 gap-3">
         {[
-          { label: "전체 파일럿", value: `${PILOTS.length}명`, icon: User, color: "#2A7AE2" },
+          { label: "재직 파일럿", value: `${activePilots.length}명`, icon: User, color: "#2A7AE2" },
           { label: "오늘 출근", value: `${todaySummary.working}명`, icon: Plane, color: "#10B981" },
           { label: "대기", value: `${todaySummary.standby}명`, icon: Clock, color: "#F59E0B" },
           { label: "오늘 비행", value: `${todaySummary.totalFlights}건`, icon: TrendingUp, color: "#FF8A00" },
@@ -1016,14 +1401,77 @@ export default function PilotsPage() {
       )}
 
       {/* 팀 통합 달력 */}
-      <TeamCalendar allSchedules={allSchedules} allNotes={allNotes} />
+      <TeamCalendar allSchedules={allSchedules} allNotes={allNotes} activePilots={activePilots} />
 
-      {/* 파일럿 카드 그리드 */}
-      <div className="grid grid-cols-2 gap-4">
-        {PILOTS.map((pilot) => (
-          <PilotCard key={pilot.id} pilot={pilot} onClick={() => setSelected(pilot)} />
-        ))}
-      </div>
+      {/* 재직 파일럿 카드 그리드 */}
+      {loading ? (
+        <div className="flex items-center justify-center py-16 text-sm text-gray-400">파일럿 목록 불러오는 중…</div>
+      ) : activePilots.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-sm text-gray-400 gap-2">
+          <User size={32} className="text-gray-200" />
+          <p>등록된 파일럿이 없습니다</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          {activePilots.map((pilot) => (
+            <PilotCard key={pilot.id} pilot={pilot} onClick={() => setSelected(pilot)} />
+          ))}
+        </div>
+      )}
+
+      {/* 퇴직 파일럿 토글 */}
+      {inactivePilots.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowInactive((v) => !v)}
+            className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-600 transition-colors w-full py-2"
+          >
+            {showInactive ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            <span>퇴직 파일럿 {inactivePilots.length}명</span>
+            <span className="ml-auto text-xs text-gray-300">{showInactive ? "접기" : "펼치기"}</span>
+          </button>
+          {showInactive && (
+            <div className="grid grid-cols-2 gap-4 mt-2">
+              {inactivePilots.map((pilot) => (
+                <button
+                  key={pilot.id}
+                  onClick={() => setSelected(pilot)}
+                  className="w-full text-left rounded-2xl p-5 border border-dashed border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-lg font-bold flex-shrink-0 opacity-40"
+                      style={{ background: pilot.avatarColor }}
+                    >
+                      {pilot.initials}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-base text-gray-400">{pilot.name}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">{pilot.joinDate.slice(0, 7)} 입사</div>
+                    </div>
+                    {pilot.inactiveReason && (
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0"
+                        style={{
+                          background: `${INACTIVE_REASON_CFG[pilot.inactiveReason].color}15`,
+                          color: INACTIVE_REASON_CFG[pilot.inactiveReason].color,
+                        }}
+                      >
+                        {INACTIVE_REASON_CFG[pilot.inactiveReason].label}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-gray-400">
+                    <UserX size={11} />
+                    <span>{pilot.inactiveDate} 퇴직 처리</span>
+                    {pilot.inactiveNote && <span className="text-gray-300">· {pilot.inactiveNote}</span>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 자격증 현황 테이블 */}
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
@@ -1043,7 +1491,7 @@ export default function PilotsPage() {
           <span className="text-right">상태</span>
         </div>
         <div className="divide-y divide-gray-50">
-          {PILOTS.flatMap((pilot) =>
+          {activePilots.flatMap((pilot) =>
             pilot.licenses.map((lic) => (
               <div
                 key={`${pilot.id}-${lic.id}`}
@@ -1076,11 +1524,16 @@ export default function PilotsPage() {
 
       {/* 상세 패널 */}
       {selected && (
-        <DetailPanel pilot={selected} onClose={() => setSelected(null)} />
+        <DetailPanel
+          pilot={selected}
+          onClose={() => setSelected(null)}
+          onDeactivate={(reason, note) => deactivatePilot(selected.id, reason, note)}
+          onReactivate={() => reactivatePilot(selected.id)}
+        />
       )}
 
       {/* 등록 모달 */}
-      {showAdd && <AddPilotModal onClose={() => setShowAdd(false)} />}
+      {showAdd && <AddPilotModal onClose={() => setShowAdd(false)} onSaved={fetchPilots} />}
     </div>
   );
 }

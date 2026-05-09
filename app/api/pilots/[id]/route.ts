@@ -1,19 +1,22 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { getTenantId } from "@/lib/supabase/tenant";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
-    const { id }   = await ctx.params;
-    const supabase = createServerClient() as any;
-    const body     = await req.json();
+    const { id }     = await ctx.params;
+    const supabase   = createServerClient() as any;
+    const tenantId   = await getTenantId();
+    const body       = await req.json();
 
     const { data, error } = await supabase
       .from("pilots")
-      .update(body)
+      .update({ ...body, updated_at: new Date().toISOString() })
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .select()
       .single();
 

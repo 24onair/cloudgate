@@ -363,11 +363,13 @@ function DetailPanel({
   onClose,
   onDeactivate,
   onReactivate,
+  onDelete,
 }: {
   pilot: Pilot;
   onClose: () => void;
   onDeactivate: (reason: InactiveReason, note: string) => void;
   onReactivate: () => void;
+  onDelete: () => void;
 }) {
   const [editMode, setEditMode] = useState(false);
   const [memo, setMemo] = useState(pilot.memo);
@@ -428,6 +430,17 @@ function DetailPanel({
                 {editMode ? "저장" : "편집"}
               </button>
             ) : null}
+            <button
+              onClick={() => {
+                if (confirm(`${pilot.name} 파일럿을 완전히 삭제하시겠습니까?\n비행 기록이 있으면 삭제되지 않을 수 있습니다.`)) {
+                  onDelete();
+                }
+              }}
+              className="p-1.5 hover:bg-red-50 rounded-lg"
+              title="파일럿 삭제"
+            >
+              <Ban size={16} className="text-red-300 hover:text-red-500" />
+            </button>
             <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
               <X size={18} className="text-gray-400" />
             </button>
@@ -1418,9 +1431,10 @@ export default function PilotsPage() {
       <TeamCalendar allSchedules={allSchedules} allNotes={allNotes} activePilots={activePilots} />
 
       {/* 재직 파일럿 카드 그리드 */}
-      {loading ? (
+      {/* 첫 로드(목록 없음)일 때만 전체 로딩 표시, 이후엔 기존 목록 유지 */}
+      {loading && pilots.length === 0 ? (
         <div className="flex items-center justify-center py-16 text-sm text-gray-400">파일럿 목록 불러오는 중…</div>
-      ) : activePilots.length === 0 ? (
+      ) : !loading && activePilots.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-sm text-gray-400 gap-2">
           <User size={32} className="text-gray-200" />
           <p>등록된 파일럿이 없습니다</p>
@@ -1543,6 +1557,12 @@ export default function PilotsPage() {
           onClose={() => setSelected(null)}
           onDeactivate={(reason, note) => deactivatePilot(selected.id, reason, note)}
           onReactivate={() => reactivatePilot(selected.id)}
+          onDelete={async () => {
+            const id = selected.id;
+            setSelected(null);
+            setPilots((prev) => prev.filter((p) => p.id !== id));
+            await fetch(`/api/pilots/${id}?hard=1`, { method: "DELETE" });
+          }}
         />
       )}
 

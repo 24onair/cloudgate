@@ -27,15 +27,31 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   }
 }
 
-export async function DELETE(_req: NextRequest, ctx: Ctx) {
+export async function DELETE(req: NextRequest, ctx: Ctx) {
   try {
-    const { id }   = await ctx.params;
-    const supabase = createServerClient() as any;
-    const { error } = await supabase
-      .from("pilots")
-      .update({ status: "inactive" })   // soft delete
-      .eq("id", id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const { id }     = await ctx.params;
+    const supabase   = createServerClient() as any;
+    const tenantId   = await getTenantId();
+    const { searchParams } = new URL(req.url);
+    const hard = searchParams.get("hard") === "1";
+
+    if (hard) {
+      // 완전 삭제 (테스트 파일럿 정리용)
+      const { error } = await supabase
+        .from("pilots")
+        .delete()
+        .eq("id", id)
+        .eq("tenant_id", tenantId);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    } else {
+      // soft delete — 비행기록·정산 이력 보존
+      const { error } = await supabase
+        .from("pilots")
+        .update({ status: "inactive" })
+        .eq("id", id)
+        .eq("tenant_id", tenantId);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

@@ -146,7 +146,9 @@ function BookingInner() {
   const [requests, setRequests] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [bookingNo] = useState(`BK-${Date.now().toString().slice(-8)}`);
+  const [bookingNo, setBookingNo] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const product = PRODUCTS.find((p) => p.id === selectedProduct);
   const optionTotal = selectedOptions.reduce((s, oid) => {
@@ -753,14 +755,61 @@ function BookingInner() {
                 <ChevronRight className="w-5 h-5" />
               </button>
             ) : (
+              <>
+              {submitError && (
+                <p className="text-sm text-red-500 text-center mb-2">{submitError}</p>
+              )}
               <button
-                onClick={() => setSubmitted(true)}
-                className="w-full py-4 rounded-2xl font-bold text-white text-base transition-all flex items-center justify-center gap-2"
+                disabled={submitting}
+                onClick={async () => {
+                  if (!product) return;
+                  setSubmitting(true);
+                  setSubmitError("");
+                  try {
+                    const opts = selectedOptions.map((oid) => {
+                      const o = OPTIONS.find((x) => x.id === oid);
+                      return o ? { name: o.label, price: o.price } : null;
+                    }).filter(Boolean);
+
+                    const res = await fetch("/api/bookings", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        customer_name:   name,
+                        customer_phone:  phone,
+                        product_name:    product.name,
+                        product_price:   product.price,
+                        headcount,
+                        flight_date:     selectedDate,
+                        flight_time:     selectedTime,
+                        options:         opts,
+                        total_price:     productTotal,
+                        deposit_amount:  deposit,
+                        balance_amount:  remaining,
+                        channel:         "online",
+                        memo:            requests || null,
+                      }),
+                    });
+                    if (!res.ok) {
+                      const err = await res.json();
+                      throw new Error(err.error ?? "예약 저장 실패");
+                    }
+                    const data = await res.json();
+                    setBookingNo(data.booking_no);
+                    setSubmitted(true);
+                  } catch (e: unknown) {
+                    setSubmitError(e instanceof Error ? e.message : "오류가 발생했습니다. 다시 시도해 주세요.");
+                  } finally {
+                    setSubmitting(false);
+                  }
+                }}
+                className="w-full py-4 rounded-2xl font-bold text-white text-base transition-all flex items-center justify-center gap-2 disabled:opacity-60"
                 style={{ backgroundColor: "#F54E00" }}
               >
                 <CreditCard className="w-5 h-5" />
-                {formatPrice(deposit)} 예약금 결제하기
+                {submitting ? "처리 중..." : `${formatPrice(deposit)} 예약금 결제하기`}
               </button>
+              </>
             )}
           </div>
         )}

@@ -190,8 +190,10 @@ export default function NewBookingPage() {
     source: "phone",
     memo: "",
   });
-  const [bookingId] = useState(generateBookingId);
+  const [bookingId, setBookingId] = useState(generateBookingId);
   const [assignedPilot] = useState(() => assignPilot());
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const slotCfg = useSlotConfig();
   const blockedSlots = useBlockedSlots();
@@ -483,11 +485,11 @@ export default function NewBookingPage() {
             />
           </div>
 
-          {/* 인원 */}
+          {/* 인원 (제약 없음 — 정원 초과 시 인접 슬롯에 자동 분할) */}
           <div>
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
               <Users className="w-4 h-4" style={{ color: "#2A7AE2" }} />
-              체험 인원 (최대 {maxCount}인)
+              체험 인원
             </label>
             <div className="flex items-center gap-3">
               <button
@@ -496,9 +498,15 @@ export default function NewBookingPage() {
               >
                 −
               </button>
-              <span className="w-12 text-center text-xl font-bold text-gray-900">{form.headcount}</span>
+              <input
+                type="number"
+                min={1}
+                value={form.headcount}
+                onChange={(e) => setForm({ ...form, headcount: Math.max(1, Number(e.target.value) || 1) })}
+                className="w-16 text-center text-xl font-bold text-gray-900 border-0 outline-none"
+              />
               <button
-                onClick={() => setForm({ ...form, headcount: Math.min(maxCount, form.headcount + 1) })}
+                onClick={() => setForm({ ...form, headcount: form.headcount + 1 })}
                 className="w-10 h-10 rounded-lg font-bold text-white transition-colors"
                 style={{ backgroundColor: "#2A7AE2" }}
               >
@@ -506,6 +514,9 @@ export default function NewBookingPage() {
               </button>
               <span className="text-sm text-gray-400">인</span>
             </div>
+            <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+              인원 제한 없이 예약하실 수 있습니다. 슬롯 정원을 초과하면 운영 단계에서 인접 시간대로 자동 분할 배정됩니다.
+            </p>
           </div>
 
           {/* 접수 경로 */}
@@ -670,12 +681,60 @@ export default function NewBookingPage() {
           >
             이전
           </button>
+          {saveError && (
+            <p className="text-sm text-red-500 text-center mb-2">{saveError}</p>
+          )}
           <button
-            onClick={() => setStep("done")}
-            className="flex-1 py-3.5 rounded-xl font-bold text-white transition-all"
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              setSaveError("");
+              try {
+                const channelMap: Record<string, string> = {
+                  phone: "phone", walk_in: "walk-in", online: "online", other: "online",
+                };
+                const opts = selectedOptionDetails.map((o) => ({ name: o.name, price: o.price }));
+                const productPrice = selectedProduct?.base_price ?? 0;
+                const optTotal = opts.reduce((s, o) => s + o.price, 0);
+                const total = (productPrice + optTotal) * form.headcount;
+                const deposit = (selectedProduct?.deposit_amount ?? 0) * form.headcount;
+
+                const res = await fetch("/api/bookings", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    customer_name:  form.customer_name,
+                    customer_phone: form.customer_phone,
+                    product_name:   selectedProduct?.name ?? "",
+                    product_price:  productPrice,
+                    headcount:      form.headcount,
+                    flight_date:    form.date,
+                    flight_time:    form.time_slot,
+                    options:        opts,
+                    total_price:    total,
+                    deposit_amount: deposit,
+                    balance_amount: total - deposit,
+                    channel:        channelMap[form.source] ?? "phone",
+                    memo:           form.memo || null,
+                  }),
+                });
+                if (!res.ok) {
+                  const err = await res.json();
+                  throw new Error(err.error ?? "저장 실패");
+                }
+                const data = await res.json();
+                setBookingId(data.booking_no);
+                setStep("done");
+              } catch (e: unknown) {
+                setSaveError(e instanceof Error ? e.message : "오류가 발생했습니다.");
+              } finally {
+                setSaving(false);
+              }
+            }}
+            className="flex-1 py-3.5 rounded-xl font-bold text-white transition-all disabled:opacity-60"
             style={{ backgroundColor: "#FF8A00" }}
           >
-            예약 확정
+            {saving ? "저장 중..." : "예약 확정"}
           </button>
         </div>
       </div>

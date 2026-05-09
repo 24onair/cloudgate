@@ -17,6 +17,7 @@ import {
   Clock,
   Share2,
   Settings,
+  MessageSquare,
 } from "lucide-react";
 
 const menuItems = [
@@ -85,6 +86,12 @@ const menuItems = [
     sublabel: "인스타·유튜브",
     icon: Share2,
     href: "/admin/sns",
+  },
+  {
+    label: "후기관리",
+    sublabel: "승인·게시",
+    icon: MessageSquare,
+    href: "/admin/reviews",
   },
   {
     label: "사이트설정",

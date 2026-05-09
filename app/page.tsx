@@ -21,72 +21,17 @@ import {
 } from "lucide-react";
 import { useSns, youtubeThumbnail } from "@/lib/snsStore";
 import { InstagramIcon as Instagram, YoutubeIcon as Youtube } from "@/components/SnsIcons";
-import { useHeroBg, useCtaBg } from "@/lib/heroStore";
+import { useHeroBg, useCtaBg, useFaqBg } from "@/lib/heroStore";
+import { useFaqs } from "@/lib/faqStore";
+import { useLogo } from "@/lib/logoStore";
+import { useFooter } from "@/lib/footerStore";
+import { usePageContent } from "@/lib/pageContentStore";
+import { useReviews } from "@/lib/reviewStore";
 
 // ── 데이터 ────────────────────────────────────────────────────────
-const PRODUCTS = [
-  {
-    id: "basic",
-    name: "베이직",
-    subtitle: "첫 패러글라이딩 입문",
-    price: 75000,
-    duration: "약 10분",
-    features: ["조종사 동반 탠덤 비행", "기본 비행 체험", "지상 안전 교육 20분", "기념 스티커 증정"],
-    optionLabel: "사진 패키지 +30,000원",
-    badge: null,
-    featured: false,
-  },
-  {
-    id: "extreme",
-    name: "익스트림",
-    subtitle: "스릴 넘치는 고고도 비행",
-    price: 120000,
-    duration: "약 20분",
-    features: ["고고도 탠덤 비행", "와인더 스릴 기동 체험", "지상 안전 교육 20분", "기념 스티커 증정"],
-    optionLabel: "사진·영상 패키지 +40,000원",
-    badge: "인기",
-    featured: true,
-  },
-  {
-    id: "vip",
-    name: "VIP",
-    subtitle: "프리미엄 풀 패키지",
-    price: 180000,
-    duration: "약 30분",
-    features: ["최고고도 파노라마 코스", "프리미엄 파일럿 배정", "지상 안전 교육 20분", "사진+영상 풀 패키지 포함", "VIP 라운지 이용"],
-    optionLabel: null,
-    badge: "프리미엄",
-    featured: false,
-  },
-];
+// PRODUCTS, SAFETY 는 pageContentStore 에서 런타임에 로드됩니다.
 
-const SAFETY = [
-  { icon: "⚖️", title: "체중 제한", desc: "40kg 이상 ~ 90kg 이하 탑승 가능" },
-  { icon: "❤️", title: "건강 상태", desc: "심장질환·고혈압·간질 병력 탑승 불가" },
-  { icon: "🤰", title: "임산부 제한", desc: "임신 중 체험 탑승 불가" },
-  { icon: "🍺", title: "음주 금지", desc: "음주 상태에서 탑승 엄격히 금지" },
-  { icon: "👟", title: "복장 규정", desc: "운동화 필수 · 샌들·슬리퍼 불가" },
-  { icon: "📱", title: "소지품 주의", desc: "낙하 위험 소지품은 지상 보관" },
-];
-
-const FAQS = [
-  { q: "예약 취소 및 환불은 어떻게 되나요?", a: "체험 3일 전까지 전액 환불, 2일 전 50% 환불, 1일 전 및 당일 취소는 환불 불가입니다. 단, 기상 악화로 인한 운항 취소 시 전액 환불 또는 날짜 변경이 가능합니다." },
-  { q: "전체 소요 시간은 얼마나 되나요?", a: "현장 도착 후 안전 교육(20분) → 장비 착용(10분) → 비행 체험 → 기념사진 순으로 진행됩니다. 상품에 따라 총 50분~1시간 30분 소요됩니다." },
-  { q: "날씨가 나쁘면 어떻게 되나요?", a: "기상 상태(풍속·시정·강수)에 따라 비행 가능 여부를 당일 오전 7시까지 문자로 안내드립니다. 비행 불가 시 전액 환불 또는 날짜 변경 중 선택하실 수 있습니다." },
-  { q: "사진·영상 촬영은 어떻게 하나요?", a: "고프로 기반 촬영 옵션을 예약 시 추가할 수 있습니다. 촬영본은 당일 USB 또는 구글 드라이브 링크로 전달됩니다. 개인 카메라·스마트폰은 안전상 비행 중 사용 불가합니다." },
-  { q: "혼자 가도 괜찮나요?", a: "네, 1인 예약도 가능합니다. 모든 비행은 전문 파일럿과 함께하는 탠덤(2인 1조) 방식이라 혼자 오셔도 안전하게 즐기실 수 있습니다." },
-  { q: "아이도 탑승할 수 있나요?", a: "만 12세 이상, 체중 40kg 이상이면 보호자 동의 하에 탑승 가능합니다. 미성년자는 법정대리인 동의서를 현장에서 작성해 주셔야 합니다." },
-  { q: "예약금은 얼마인가요?", a: "예약 시 상품 금액의 30%를 예약금으로 결제하며, 나머지는 현장에서 결제하시면 됩니다. 카드·현금·계좌이체 모두 가능합니다." },
-];
-
-const REVIEWS = [
-  { name: "이수진", date: "2026-04-28", rating: 5, product: "베이직",   avatar: "이", text: "생애 처음 패러글라이딩인데 파일럿분이 너무 친절하게 설명해 주셔서 무서움 없이 즐길 수 있었어요. 하늘에서 보이는 뷰가 정말 잊지 못할 것 같아요!" },
-  { name: "최현우", date: "2026-04-29", rating: 5, product: "익스트림", avatar: "최", text: "스릴 넘치는 비행이었습니다! 고고도 기동할 때 심장이 쫄깃했어요. 사진 패키지도 추가했는데 고프로 영상 퀄리티가 대박입니다. 꼭 추천해요." },
-  { name: "박지연", date: "2026-04-30", rating: 5, product: "VIP",      avatar: "박", text: "남자친구 생일 선물로 VIP 예약했는데 완전 대성공이었어요. 파노라마 코스 뷰가 진짜 말문이 막혔고 VIP 라운지에서 쉬는 것도 좋았어요." },
-  { name: "정성민", date: "2026-05-01", rating: 4, product: "베이직",   avatar: "정", text: "날씨 걱정했는데 당일 비행 가능 문자 받고 너무 좋았어요. 안전 교육을 꼼꼼하게 해주셔서 믿음이 갔고 비행 자체도 너무 즐거웠습니다." },
-  { name: "한미영", date: "2026-05-01", rating: 5, product: "익스트림", avatar: "한", text: "버킷리스트 달성! 두 손 놓고 비행하는 순간이 평생 기억에 남을 것 같아요. 재예약 의사 200%입니다. 다음엔 VIP 도전할게요!" },
-  { name: "김도현", date: "2026-04-27", rating: 5, product: "VIP",      avatar: "김", text: "회사 워크숍으로 단체 예약했어요. 직원들 반응이 최고였고 안전 관리도 철저해서 걱정 없이 즐길 수 있었습니다. 구름상회 강력 추천합니다!" },
-];
+// REVIEWS 는 reviewStore 에서 승인된 것만 로드됩니다.
 
 // ── 컴포넌트 ──────────────────────────────────────────────────────
 
@@ -117,15 +62,53 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   );
 }
 
+function FaqItemOverlay({ q, a, darkMode }: { q: string; a: string; darkMode: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className="border-b last:border-0 cursor-pointer group"
+      style={{ borderColor: darkMode ? "rgba(253,253,248,0.12)" : "#bfc1b7" }}
+      onClick={() => setOpen(!open)}
+    >
+      <div className="flex items-center justify-between py-4 gap-4">
+        <p
+          className="font-semibold text-sm leading-relaxed flex-1 group-hover:text-[#F54E00] transition-colors"
+          style={{ color: darkMode ? "rgba(253,253,248,0.9)" : "#23251d" }}
+        >
+          {q}
+        </p>
+        {open
+          ? <ChevronUp  className="w-4 h-4 flex-shrink-0" style={{ color: darkMode ? "rgba(253,253,248,0.4)" : "#9ea096" }} />
+          : <ChevronDown className="w-4 h-4 flex-shrink-0" style={{ color: darkMode ? "rgba(253,253,248,0.4)" : "#9ea096" }} />
+        }
+      </div>
+      {open && (
+        <p
+          className="text-sm leading-relaxed pb-4 pr-8"
+          style={{ color: darkMode ? "rgba(253,253,248,0.6)" : "#65675e" }}
+        >
+          {a}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── 메인 ─────────────────────────────────────────────────────────
 export default function LandingPage() {
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled]             = useState(false);
   const productRef = useRef<HTMLDivElement>(null);
+  const logo    = useLogo();
+  const footer  = useFooter();
+  const content = usePageContent();
+  const reviews = useReviews("approved");
   const { profile: snsProfile, posts: instaPosts, shorts: ytShortsManual, fetchedShorts } = useSns();
   const heroBg = useHeroBg();
   const ctaBg  = useCtaBg();
+  const faqBg  = useFaqBg();
+  const faqs   = useFaqs();
 
   const ytShorts =
     snsProfile.youtubeAutoFetch && fetchedShorts.length > 0
@@ -139,7 +122,9 @@ export default function LandingPage() {
   }, []);
 
   const scrollToProducts = () => productRef.current?.scrollIntoView({ behavior: "smooth" });
-  const avgRating = (REVIEWS.reduce((s, r) => s + r.rating, 0) / REVIEWS.length).toFixed(1);
+  const avgRating = reviews.length
+    ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
+    : "—";
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#fdfdf8", fontFamily: "var(--font-ibm-plex-sans), 'IBM Plex Sans', sans-serif" }}>
@@ -155,8 +140,14 @@ export default function LandingPage() {
       >
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Wind className="w-5 h-5" style={{ color: "#F54E00" }} />
-            <span className="font-bold text-base" style={{ color: "#23251d" }}>구름상회</span>
+            {logo.imageDataUrl
+              /* eslint-disable-next-line @next/next/no-img-element */
+              ? <img src={logo.imageDataUrl} alt={logo.text} className="h-8 w-auto object-contain" />
+              : <Wind className="w-5 h-5" style={{ color: "#F54E00" }} />
+            }
+            {(!logo.imageDataUrl || logo.showText) && (
+              <span className="font-bold text-base" style={{ color: "#23251d" }}>{logo.text || "구름상회"}</span>
+            )}
           </div>
           <div className="hidden md:flex items-center gap-6 text-sm font-semibold" style={{ color: "#65675e" }}>
             {[["상품 안내", ""], ["안전 수칙", "#safety"], ["FAQ", "#faq"], ["후기", "#reviews"]].map(([label, href]) =>
@@ -196,15 +187,27 @@ export default function LandingPage() {
       <section
         className="relative pt-32 pb-24 px-6 overflow-hidden"
         style={{
-          background: heroBg.imageDataUrl && heroBg.enabled ? undefined : "#fdfdf8",
-          backgroundColor: heroBg.imageDataUrl && heroBg.enabled ? "#1e1f23" : undefined,
+          background: heroBg.imageDataUrl && heroBg.enabled
+            ? undefined
+            : "#fdfdf8",
+          backgroundColor: heroBg.imageDataUrl && heroBg.enabled ? "#020d1f" : undefined,
         }}
       >
         {heroBg.imageDataUrl && heroBg.enabled && (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={heroBg.imageDataUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover" />
-            <div className="absolute inset-0" style={{ background: `rgba(30,31,35,${(heroBg.overlayOpacity / 100).toFixed(2)})` }} />
+            <img src={heroBg.imageDataUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: heroBg.objectPosition ?? "50% 50%" }} />
+            {/* 브랜드 그라데이션 오버레이 — 가독성 확보 */}
+            <div
+              className="absolute inset-0"
+              style={{
+                background: `linear-gradient(175deg,
+                  rgba(2,13,31,${(heroBg.overlayOpacity / 100).toFixed(2)}) 0%,
+                  rgba(13,43,82,${Math.min(1, heroBg.overlayOpacity / 100 + 0.05).toFixed(2)}) 35%,
+                  rgba(26,74,128,${Math.max(0, heroBg.overlayOpacity / 100 - 0.05).toFixed(2)}) 65%,
+                  rgba(42,122,226,${Math.max(0, heroBg.overlayOpacity / 100 - 0.15).toFixed(2)}) 100%)`,
+              }}
+            />
           </>
         )}
 
@@ -213,7 +216,7 @@ export default function LandingPage() {
           <div className="inline-flex items-center gap-2 mb-6 px-3 py-1.5 rounded text-xs font-semibold uppercase tracking-widest"
             style={{ backgroundColor: heroBg.imageDataUrl && heroBg.enabled ? "rgba(245,78,0,0.15)" : "#e5e7e0", color: "#F54E00", border: "1px solid rgba(245,78,0,0.3)", borderRadius: "4px" }}>
             <span className="w-1.5 h-1.5 rounded-full bg-[#F54E00] animate-pulse" />
-            오늘 날씨 🟢 비행 최적
+            {content.heroBadge}
           </div>
 
           {/* 헤드라인 */}
@@ -227,13 +230,12 @@ export default function LandingPage() {
               color: heroBg.imageDataUrl && heroBg.enabled ? "#fdfdf8" : "#23251d",
             }}
           >
-            하늘을 직접<br />
-            <span style={{ color: "#F54E00" }}>날아보세요</span>
+            {content.heroHeadline1}<br />
+            <span style={{ color: "#F54E00" }}>{content.heroHeadline2}</span>
           </h1>
 
-          <p className="mb-10 max-w-xl text-lg leading-relaxed" style={{ color: heroBg.imageDataUrl && heroBg.enabled ? "rgba(253,253,248,0.75)" : "#65675e", fontWeight: 400, lineHeight: 1.65 }}>
-            전문 파일럿과 함께하는 안전한 체험 패러글라이딩.<br />
-            초보자도 10분이면 하늘을 날 수 있습니다.
+          <p className="mb-10 max-w-xl text-lg leading-relaxed whitespace-pre-line" style={{ color: heroBg.imageDataUrl && heroBg.enabled ? "rgba(253,253,248,0.75)" : "#65675e", fontWeight: 400, lineHeight: 1.65 }}>
+            {content.heroSubtext}
           </p>
 
           {/* CTA 버튼 */}
@@ -243,7 +245,7 @@ export default function LandingPage() {
               className="flex items-center gap-2 px-7 py-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-70 active:scale-95"
               style={{ backgroundColor: "#1e1f23", borderRadius: "6px" }}
             >
-              지금 예약하기 <ArrowRight className="w-4 h-4" />
+              {content.heroCtaButton} <ArrowRight className="w-4 h-4" />
             </button>
             <button
               onClick={scrollToProducts}
@@ -255,16 +257,16 @@ export default function LandingPage() {
                 borderRadius: "6px",
               }}
             >
-              상품 보기
+              {content.heroSecondaryButton}
             </button>
           </div>
 
           {/* 통계 */}
           <div className="flex flex-wrap gap-8">
             {[
-              { value: "2,400+", label: "누적 비행" },
-              { value: "4.9",    label: "평균 별점" },
-              { value: "100%",   label: "안전 운항" },
+              { value: content.heroStat1Value, label: content.heroStat1Label },
+              { value: content.heroStat2Value, label: content.heroStat2Label },
+              { value: content.heroStat3Value, label: content.heroStat3Label },
             ].map((s) => (
               <div key={s.label}>
                 <p className="text-2xl font-bold" style={{ fontWeight: 800, color: heroBg.imageDataUrl && heroBg.enabled ? "#fdfdf8" : "#23251d" }}>{s.value}</p>
@@ -286,15 +288,15 @@ export default function LandingPage() {
       <section ref={productRef} className="py-20 px-6" style={{ backgroundColor: "#eeefe9" }}>
         <div className="max-w-5xl mx-auto">
           <div className="mb-12">
-            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: "#F54E00" }}>EXPERIENCE</p>
+            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: "#F54E00" }}>{content.productLabel}</p>
             <h2 className="font-bold mb-3" style={{ fontSize: "2rem", fontWeight: 700, color: "#23251d", lineHeight: 1.3 }}>
-              내게 맞는 비행을 선택하세요
+              {content.productHeading}
             </h2>
-            <p className="text-base" style={{ color: "#65675e" }}>모든 상품은 전문 파일럿 동반 탠덤 비행입니다</p>
+            <p className="text-base" style={{ color: "#65675e" }}>{content.productSubtext}</p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-4">
-            {PRODUCTS.map((p) => (
+            {content.products.map((p) => (
               <div
                 key={p.id}
                 className="rounded flex flex-col relative group"
@@ -443,23 +445,23 @@ export default function LandingPage() {
       <section id="safety" className="py-20 px-6" style={{ backgroundColor: "#fdfdf8" }}>
         <div className="max-w-4xl mx-auto">
           <div className="mb-12">
-            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: "#F54E00" }}>SAFETY FIRST</p>
-            <h2 className="font-bold mb-3" style={{ fontSize: "2rem", fontWeight: 700, color: "#23251d" }}>안전이 최우선입니다</h2>
-            <p className="text-base" style={{ color: "#65675e" }}>체험 전 아래 안전 수칙을 반드시 확인해 주세요</p>
+            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: "#F54E00" }}>{content.safetyLabel}</p>
+            <h2 className="font-bold mb-3" style={{ fontSize: "2rem", fontWeight: 700, color: "#23251d" }}>{content.safetyHeading}</h2>
+            <p className="text-base" style={{ color: "#65675e" }}>{content.safetySubtext}</p>
           </div>
 
           {/* 안전 배너 */}
           <div className="rounded flex items-center gap-4 px-6 py-5 mb-10" style={{ backgroundColor: "#e5e7e0", border: "1px solid #bfc1b7", borderRadius: "6px" }}>
             <Shield className="w-7 h-7 flex-shrink-0" style={{ color: "#23251d" }} />
             <div>
-              <p className="font-bold text-sm" style={{ color: "#23251d" }}>전 파일럿 자격증 보유 · 비행안전 보험 가입</p>
-              <p className="text-sm mt-0.5" style={{ color: "#65675e" }}>구름상회의 모든 파일럿은 한국활공협회 공인 자격증 소지자이며, 탑승 전 장비 이상 유무를 반드시 점검합니다.</p>
+              <p className="font-bold text-sm" style={{ color: "#23251d" }}>{content.safetyBannerTitle}</p>
+              <p className="text-sm mt-0.5" style={{ color: "#65675e" }}>{content.safetyBannerDesc}</p>
             </div>
           </div>
 
           <div className="grid md:grid-cols-3 gap-3">
-            {SAFETY.map((s) => (
-              <div key={s.title} className="flex gap-4 p-5 rounded group hover:bg-[#f4f4f4] transition-colors" style={{ border: "1px solid #bfc1b7", borderRadius: "4px" }}>
+            {content.safetyItems.map((s) => (
+              <div key={s.id} className="flex gap-4 p-5 rounded group hover:bg-[#f4f4f4] transition-colors" style={{ border: "1px solid #bfc1b7", borderRadius: "4px" }}>
                 <span className="text-2xl flex-shrink-0">{s.icon}</span>
                 <div>
                   <p className="font-bold text-sm group-hover:text-[#F54E00] transition-colors" style={{ color: "#23251d" }}>{s.title}</p>
@@ -472,21 +474,60 @@ export default function LandingPage() {
       </section>
 
       {/* ── FAQ ───────────────────────────────────────────────── */}
-      <section id="faq" className="py-20 px-6" style={{ backgroundColor: "#eeefe9" }}>
-        <div className="max-w-2xl mx-auto">
+      <section
+        id="faq"
+        className="relative py-20 px-6 overflow-hidden"
+        style={{
+          background: faqBg.imageDataUrl && faqBg.enabled
+            ? undefined
+            : "#eeefe9",
+          backgroundColor: faqBg.imageDataUrl && faqBg.enabled ? "#0D2B52" : undefined,
+        }}
+      >
+        {faqBg.imageDataUrl && faqBg.enabled && (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={faqBg.imageDataUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: faqBg.objectPosition ?? "50% 50%" }} />
+            {/* 브랜드 그라데이션 오버레이 */}
+            <div
+              className="absolute inset-0"
+              style={{
+                background: `linear-gradient(175deg,
+                  rgba(2,13,31,${(faqBg.overlayOpacity / 100).toFixed(2)}) 0%,
+                  rgba(13,43,82,${Math.min(1, faqBg.overlayOpacity / 100 + 0.05).toFixed(2)}) 35%,
+                  rgba(26,74,128,${Math.max(0, faqBg.overlayOpacity / 100 - 0.05).toFixed(2)}) 65%,
+                  rgba(42,122,226,${Math.max(0, faqBg.overlayOpacity / 100 - 0.15).toFixed(2)}) 100%)`,
+              }}
+            />
+          </>
+        )}
+
+        <div className="relative z-10 max-w-2xl mx-auto">
           <div className="mb-12">
-            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: "#F54E00" }}>FAQ</p>
-            <h2 className="font-bold" style={{ fontSize: "2rem", fontWeight: 700, color: "#23251d" }}>자주 묻는 질문</h2>
+            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: "#F54E00" }}>{content.faqLabel}</p>
+            <h2
+              className="font-bold"
+              style={{ fontSize: "2rem", fontWeight: 700, lineHeight: 1.3, color: faqBg.imageDataUrl && faqBg.enabled ? "#fdfdf8" : "#23251d" }}
+            >
+              {content.faqHeading}
+            </h2>
           </div>
 
-          <div className="rounded p-6" style={{ backgroundColor: "#fdfdf8", border: "1px solid #bfc1b7", borderRadius: "6px" }}>
-            {FAQS.map((faq) => <FaqItem key={faq.q} q={faq.q} a={faq.a} />)}
+          <div
+            className="rounded p-6"
+            style={{
+              backgroundColor: faqBg.imageDataUrl && faqBg.enabled ? "rgba(253,253,248,0.07)" : "#fdfdf8",
+              border: `1px solid ${faqBg.imageDataUrl && faqBg.enabled ? "rgba(253,253,248,0.15)" : "#bfc1b7"}`,
+              borderRadius: "6px",
+            }}
+          >
+            {faqs.map((faq) => (
+              <FaqItemOverlay key={faq.id} q={faq.q} a={faq.a} darkMode={!!(faqBg.imageDataUrl && faqBg.enabled)} />
+            ))}
           </div>
 
-          <p className="text-sm mt-6" style={{ color: "#9ea096" }}>
-            더 궁금한 점은{" "}
-            <button className="font-semibold underline hover:text-[#F54E00] transition-colors" style={{ color: "#4d4f46" }}>카카오톡 채널</button>
-            로 문의해 주세요
+          <p className="text-sm mt-6 whitespace-pre-line" style={{ color: faqBg.imageDataUrl && faqBg.enabled ? "rgba(253,253,248,0.45)" : "#9ea096" }}>
+            {content.faqNote}
           </p>
         </div>
       </section>
@@ -500,30 +541,42 @@ export default function LandingPage() {
             <div className="flex items-center gap-2">
               <StarRating rating={5} />
               <span className="font-bold text-xl" style={{ color: "#23251d" }}>{avgRating}</span>
-              <span className="text-sm" style={{ color: "#9ea096" }}>/ 5.0 · {REVIEWS.length}개 후기</span>
+              <span className="text-sm" style={{ color: "#9ea096" }}>/ 5.0 · {reviews.length}개 후기</span>
             </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-4">
-            {REVIEWS.map((r) => (
-              <div key={r.name + r.date} className="p-5 flex flex-col group hover:bg-[#f4f4f4] transition-colors" style={{ backgroundColor: "#fdfdf8", border: "1px solid #bfc1b7", borderRadius: "6px" }}>
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded flex items-center justify-center text-sm font-bold flex-shrink-0" style={{ backgroundColor: "#e5e7e0", color: "#23251d", borderRadius: "4px" }}>
-                      {r.avatar}
+          {reviews.length === 0 ? (
+            <p className="text-center py-12 text-sm" style={{ color: "#bfc1b7" }}>아직 등록된 후기가 없습니다</p>
+          ) : (
+            <div className="grid md:grid-cols-3 gap-4">
+              {reviews.map((r) => (
+                <div key={r.id} className="p-5 flex flex-col group hover:bg-[#f4f4f4] transition-colors" style={{ backgroundColor: "#fdfdf8", border: "1px solid #bfc1b7", borderRadius: "6px" }}>
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded flex items-center justify-center text-sm font-bold flex-shrink-0" style={{ backgroundColor: "#e5e7e0", color: "#23251d", borderRadius: "4px" }}>
+                        {r.avatar}
+                      </div>
+                      <div>
+                        <p className="font-bold text-sm" style={{ color: "#23251d" }}>{r.name}</p>
+                        <p className="text-xs" style={{ color: "#9ea096" }}>{r.date}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold text-sm" style={{ color: "#23251d" }}>{r.name}</p>
-                      <p className="text-xs" style={{ color: "#9ea096" }}>{r.date}</p>
-                    </div>
+                    <StarRating rating={r.rating} />
                   </div>
-                  <StarRating rating={r.rating} />
+                  {r.product && <span className="inline-flex self-start text-xs font-semibold px-2 py-0.5 mb-3" style={{ backgroundColor: "#e5e7e0", color: "#4d4f46", borderRadius: "9999px" }}>{r.product}</span>}
+                  {r.images.length > 0 && (
+                    <div className="flex gap-1.5 mb-3">
+                      {r.images.slice(0, 3).map((img, i) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img key={i} src={img} alt="" className="w-16 h-16 object-cover rounded-lg" />
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-sm leading-relaxed flex-1" style={{ color: "#65675e", lineHeight: 1.65 }}>{r.text}</p>
                 </div>
-                <span className="inline-flex self-start text-xs font-semibold px-2 py-0.5 mb-3" style={{ backgroundColor: "#e5e7e0", color: "#4d4f46", borderRadius: "9999px" }}>{r.product}</span>
-                <p className="text-sm leading-relaxed flex-1" style={{ color: "#65675e", lineHeight: 1.65 }}>{r.text}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -531,28 +584,40 @@ export default function LandingPage() {
       <section
         className="relative py-20 px-6 text-center overflow-hidden"
         style={{
-          backgroundColor: ctaBg.imageDataUrl && ctaBg.enabled ? "#1e1f23" : "#1e1f23",
+          background: ctaBg.imageDataUrl && ctaBg.enabled
+            ? undefined
+            : "linear-gradient(135deg, #0D2B52 0%, #1a4a80 50%, #2A7AE2 100%)",
+          backgroundColor: ctaBg.imageDataUrl && ctaBg.enabled ? "#0D2B52" : undefined,
         }}
       >
         {ctaBg.imageDataUrl && ctaBg.enabled && (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={ctaBg.imageDataUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover" />
-            <div className="absolute inset-0" style={{ background: `rgba(30,31,35,${(ctaBg.overlayOpacity / 100).toFixed(2)})` }} />
+            <img src={ctaBg.imageDataUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: ctaBg.objectPosition ?? "50% 50%" }} />
+            {/* 브랜드 그라데이션 오버레이 */}
+            <div
+              className="absolute inset-0"
+              style={{
+                background: `linear-gradient(135deg,
+                  rgba(13,43,82,${(ctaBg.overlayOpacity / 100).toFixed(2)}) 0%,
+                  rgba(26,74,128,${Math.max(0, ctaBg.overlayOpacity / 100 - 0.05).toFixed(2)}) 50%,
+                  rgba(42,122,226,${Math.max(0, ctaBg.overlayOpacity / 100 - 0.15).toFixed(2)}) 100%)`,
+              }}
+            />
           </>
         )}
         <div className="relative z-10">
-          <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "rgba(253,253,248,0.4)" }}>READY TO FLY?</p>
+          <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "rgba(253,253,248,0.4)" }}>{content.ctaLabel}</p>
           <h2 className="font-bold mb-4" style={{ fontSize: "clamp(2rem,5vw,3rem)", fontWeight: 800, color: "#fdfdf8", lineHeight: 1.2 }}>
-            오늘, 하늘을 날아보세요
+            {content.ctaHeading}
           </h2>
-          <p className="mb-10 text-base" style={{ color: "rgba(253,253,248,0.5)" }}>주말 슬롯이 빠르게 마감됩니다</p>
+          <p className="mb-10 text-base" style={{ color: "rgba(253,253,248,0.5)" }}>{content.ctaSubtext}</p>
           <button
             onClick={() => router.push("/booking")}
             className="inline-flex items-center gap-2 px-10 py-4 text-base font-semibold text-white transition-all hover:bg-[#F54E00] active:scale-95"
             style={{ backgroundColor: "#F54E00", borderRadius: "6px" }}
           >
-            지금 예약하기 <ArrowRight className="w-5 h-5" />
+            {content.ctaButton} <ArrowRight className="w-5 h-5" />
           </button>
         </div>
       </section>
@@ -563,31 +628,37 @@ export default function LandingPage() {
           <div className="flex flex-col md:flex-row items-start justify-between gap-8 mb-10">
             <div>
               <div className="flex items-center gap-2 mb-3">
-                <Wind className="w-5 h-5" style={{ color: "#F54E00" }} />
-                <span className="font-bold text-base" style={{ color: "#fdfdf8" }}>구름상회</span>
+                {logo.imageDataUrl
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  ? <img src={logo.imageDataUrl} alt={logo.text} className="h-7 w-auto object-contain" style={{ filter: "brightness(0) invert(1)" }} />
+                  : <Wind className="w-5 h-5" style={{ color: "#F54E00" }} />
+                }
+                {(!logo.imageDataUrl || logo.showText) && (
+                  <span className="font-bold text-base" style={{ color: "#fdfdf8" }}>{logo.text || "구름상회"}</span>
+                )}
               </div>
-              <p className="text-sm leading-relaxed max-w-xs" style={{ color: "rgba(253,253,248,0.35)" }}>
-                하늘을 가장 가까이서 만나는 곳.<br />패러글라이딩 체험비행 전문 업체.
+              <p className="text-sm leading-relaxed max-w-xs whitespace-pre-line" style={{ color: "rgba(253,253,248,0.35)" }}>
+                {footer.tagline}
               </p>
             </div>
             <div className="flex gap-12 text-sm" style={{ color: "rgba(253,253,248,0.35)" }}>
               <div className="space-y-2">
                 <p className="font-semibold mb-3" style={{ color: "rgba(253,253,248,0.55)" }}>운영 시간</p>
-                <p>평일 09:00 ~ 18:00</p>
-                <p>주말 07:00 ~ 19:00</p>
-                <p>기상 악화 시 당일 공지</p>
+                {footer.hoursWeekday && <p>{footer.hoursWeekday}</p>}
+                {footer.hoursWeekend && <p>{footer.hoursWeekend}</p>}
+                {footer.hoursNotice  && <p>{footer.hoursNotice}</p>}
               </div>
               <div className="space-y-2">
                 <p className="font-semibold mb-3" style={{ color: "rgba(253,253,248,0.55)" }}>문의</p>
-                <div className="flex items-center gap-2"><Phone className="w-3.5 h-3.5" /><span>010-0000-0000</span></div>
-                <div className="flex items-center gap-2"><MessageCircle className="w-3.5 h-3.5" /><span>카카오톡 채널</span></div>
-                <div className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /><span>강원도 ○○군 ○○면</span></div>
+                {footer.phone   && <div className="flex items-center gap-2"><Phone className="w-3.5 h-3.5" /><span>{footer.phone}</span></div>}
+                {footer.kakao   && <div className="flex items-center gap-2"><MessageCircle className="w-3.5 h-3.5" /><span>{footer.kakao}</span></div>}
+                {footer.address && <div className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /><span>{footer.address}</span></div>}
               </div>
             </div>
           </div>
           <div className="pt-6 flex flex-col md:flex-row items-center justify-between gap-2 text-xs" style={{ borderTop: "1px solid rgba(253,253,248,0.08)", color: "rgba(253,253,248,0.2)" }}>
-            <p>© 2026 구름상회. All rights reserved.</p>
-            <p>사업자등록번호 000-00-00000 · 대표 홍길동</p>
+            <p>{footer.copyright}</p>
+            <p>{footer.bizInfo}</p>
           </div>
         </div>
       </footer>

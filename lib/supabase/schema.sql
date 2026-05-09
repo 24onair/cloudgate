@@ -35,6 +35,7 @@ create table if not exists pilots (
   status           text default 'active'       -- active | inactive
     check (status in ('active', 'inactive')),
   rate_per_flight  integer default 30000,      -- 비행 1건당 정산 단가(원)
+  photo_url        text,                       -- 프로필 사진 (base64 or Storage URL)
   memo             text,
   -- 퇴직/복직 관련
   inactive_reason  text

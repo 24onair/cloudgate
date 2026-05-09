@@ -67,6 +67,8 @@ interface Pilot {
   maxFlightsPerDay: number;
   schedule: MonthSchedule;
   memo: string;
+  // 사진
+  photoUrl?: string;
   // 퇴직 관련
   active: boolean;
   inactiveReason?: InactiveReason;
@@ -97,6 +99,7 @@ function mapDbPilot(p: any): Pilot {
     flightsToday: p.flights_today ?? 0,
     maxFlightsPerDay: p.max_flights_per_day ?? 6,
     memo: p.memo ?? "",
+    photoUrl: p.photo_url ?? undefined,
     active: p.status !== "inactive",
     inactiveReason: p.inactive_reason as InactiveReason | undefined,
     inactiveNote: p.inactive_note ?? undefined,
@@ -186,10 +189,15 @@ function PilotCard({ pilot, onClick }: { pilot: Pilot; onClick: () => void }) {
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-lg font-bold flex-shrink-0"
+            className="w-12 h-12 rounded-xl flex-shrink-0 overflow-hidden flex items-center justify-center text-white text-lg font-bold"
             style={{ background: pilot.avatarColor }}
           >
-            {pilot.initials}
+            {pilot.photoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={pilot.photoUrl} alt={pilot.name} className="w-full h-full object-cover" />
+            ) : (
+              pilot.initials
+            )}
           </div>
           <div>
             <div className="font-bold text-base" style={{ color: "#0D2B52" }}>
@@ -394,10 +402,15 @@ function DetailPanel({
         <div className="sticky top-0 bg-white z-10 border-b border-gray-100 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold"
+              className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center text-white font-bold flex-shrink-0"
               style={{ background: pilot.avatarColor }}
             >
-              {pilot.initials}
+              {pilot.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={pilot.photoUrl} alt={pilot.name} className="w-full h-full object-cover" />
+              ) : (
+                pilot.initials
+              )}
             </div>
             <div>
               <div className="font-bold" style={{ color: "#0D2B52" }}>{pilot.name}</div>
@@ -991,6 +1004,7 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
         phone: phone.trim(),
         email: email.trim() || null,
         join_date: joinDate || null,
+        photo_url: photo ?? null,
         memo: reason.trim() || null,
         status: "active",
       }),

@@ -149,7 +149,9 @@ const INACTIVE_REASON_CFG: Record<InactiveReason, { label: string; color: string
 };
 
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
-const TODAY_STR = "2026-05-03";
+const TODAY_STR = new Date().toISOString().slice(0, 10);
+const TODAY_YEAR = Number(TODAY_STR.slice(0, 4));
+const TODAY_MONTH = Number(TODAY_STR.slice(5, 7));
 
 function daysInMonth(y: number, m: number) { return new Date(y, m, 0).getDate(); }
 function startDOW(y: number, m: number) { return new Date(y, m - 1, 1).getDay(); }
@@ -389,8 +391,33 @@ function DetailPanel({
   onDelete: () => void;
 }) {
   const [editMode, setEditMode] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [memo, setMemo] = useState(pilot.memo);
   const [showDeactivate, setShowDeactivate] = useState(false);
+
+  // 상세 패널 달력 월 상태 (동적 현재 월 기준)
+  const [calYear, setCalYear] = useState(TODAY_YEAR);
+  const [calMonth, setCalMonth] = useState(TODAY_MONTH);
+
+  function goCalMonth(delta: number) {
+    let m = calMonth + delta;
+    let y = calYear;
+    if (m > 12) { m = 1; y++; }
+    if (m < 1)  { m = 12; y--; }
+    setCalMonth(m);
+    setCalYear(y);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    await fetch(`/api/pilots/${pilot.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memo }),
+    });
+    setSaving(false);
+    setEditMode(false);
+  }
 
   // 자격증 로컬 상태 (편집 후 DB 저장)
   const [licenses, setLicenses] = useState<License[]>(pilot.licenses);
@@ -474,12 +501,13 @@ function DetailPanel({
           <div className="flex items-center gap-2">
             {pilot.active ? (
               <button
-                onClick={() => setEditMode(!editMode)}
-                className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"
-                style={{ color: "#0D2B52" }}
+                onClick={editMode ? handleSave : () => setEditMode(true)}
+                disabled={saving}
+                className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+                style={{ color: editMode ? "#2A7AE2" : "#0D2B52", borderColor: editMode ? "#2A7AE2" : "#E5E7EB" }}
               >
                 <Edit3 size={13} />
-                {editMode ? "저장" : "편집"}
+                {saving ? "저장 중…" : editMode ? "저장" : "편집"}
               </button>
             ) : null}
             <button
@@ -652,10 +680,18 @@ function DetailPanel({
             </div>
           </section>
 
-          {/* 5월 스케줄 */}
+          {/* 스케줄 달력 */}
           <section>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">5월 스케줄</h3>
+              <div className="flex items-center gap-1">
+                <button onClick={() => goCalMonth(-1)} className="p-1 rounded hover:bg-gray-100">
+                  <ChevronLeft size={13} className="text-gray-400" />
+                </button>
+                <h3 className="text-xs font-semibold text-gray-500">{calYear}년 {calMonth}월 스케줄</h3>
+                <button onClick={() => goCalMonth(1)} className="p-1 rounded hover:bg-gray-100">
+                  <ChevronRight size={13} className="text-gray-400" />
+                </button>
+              </div>
               {editMode && (
                 <span className="text-xs text-blue-400">날짜를 클릭해서 변경</span>
               )}
@@ -677,15 +713,15 @@ function DetailPanel({
             {/* 날짜 그리드 */}
             <div className="grid grid-cols-7 gap-1">
               {/* 앞 빈칸 */}
-              {Array.from({ length: startDOW(2026, 5) }).map((_, i) => (
+              {Array.from({ length: startDOW(calYear, calMonth) }).map((_, i) => (
                 <div key={`empty-${i}`} />
               ))}
-              {monthDates(2026, 5).map((date, idx) => {
+              {monthDates(calYear, calMonth).map((date, idx) => {
                 const day = idx + 1;
-                const dow = (startDOW(2026, 5) + idx) % 7;
+                const dow = (startDOW(calYear, calMonth) + idx) % 7;
                 const status = scheduleData[date] || "off";
                 const cfg = SCHEDULE_CFG[status];
-                const isToday = date === "2026-05-01";
+                const isToday = date === TODAY_STR;
 
                 return (
                   <button
@@ -929,8 +965,8 @@ function TeamScheduleEditModal({
 function TeamCalendar({ allSchedules, allNotes, activePilots }: { allSchedules: AllSchedules; allNotes: Record<string, Record<string, string>>; activePilots: Pilot[] }) {
   const PILOT_META = activePilots.map((p) => ({ id: p.id, name: p.name, color: p.avatarColor, fallback: p.schedule }));
 
-  const [viewYear, setViewYear] = useState(2026);
-  const [viewMonth, setViewMonth] = useState(5);
+  const [viewYear, setViewYear] = useState(TODAY_YEAR);
+  const [viewMonth, setViewMonth] = useState(TODAY_MONTH);
   const [editDate, setEditDate] = useState<string | null>(null);
 
   const dates = monthDates(viewYear, viewMonth);
@@ -945,9 +981,9 @@ function TeamCalendar({ allSchedules, allNotes, activePilots }: { allSchedules: 
     setViewYear(y);
   }
 
-  function goToday() { setViewYear(2026); setViewMonth(5); }
+  function goToday() { setViewYear(TODAY_YEAR); setViewMonth(TODAY_MONTH); }
 
-  const isCurrentMonth = viewYear === 2026 && viewMonth === 5;
+  const isCurrentMonth = viewYear === TODAY_YEAR && viewMonth === TODAY_MONTH;
 
   function getAbsent(date: string) {
     return PILOT_META.flatMap((p) => {
@@ -1099,6 +1135,7 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [joinDate, setJoinDate] = useState("");
+  const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
   // 자격 · 보험
   const [licenseNo, setLicenseNo] = useState("");
   const [insuranceNo, setInsuranceNo] = useState("");
@@ -1130,7 +1167,11 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
   }
 
   async function submit() {
-    if (!name.trim() || !phone.trim()) return;
+    const errs: { name?: string; phone?: string } = {};
+    if (!name.trim()) errs.name = "이름을 입력해주세요.";
+    if (!phone.trim()) errs.phone = "전화번호를 입력해주세요.";
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+    setErrors({});
     await fetch("/api/pilots", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1205,10 +1246,11 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                   type="text"
                   placeholder="홍길동"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className={inputCls}
+                  onChange={(e) => { setName(e.target.value); setErrors((p) => ({ ...p, name: undefined })); }}
+                  className={`${inputCls} ${errors.name ? "border-red-400" : ""}`}
                   style={inputStyle}
                 />
+                {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
               </div>
               <div>
                 <label className={labelCls}>전화번호 <span className="text-red-400 normal-case">*</span></label>
@@ -1216,11 +1258,14 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                   type="tel"
                   placeholder="01012345678"
                   value={phone}
-                  onChange={(e) => handlePhone(e.target.value)}
-                  className={inputCls}
+                  onChange={(e) => { handlePhone(e.target.value); setErrors((p) => ({ ...p, phone: undefined })); }}
+                  className={`${inputCls} ${errors.phone ? "border-red-400" : ""}`}
                   style={inputStyle}
                 />
-                <p className="text-xs text-gray-400 mt-1">숫자만 입력하면 자동으로 000-0000-0000 형식으로 변환됩니다</p>
+                {errors.phone
+                  ? <p className="text-xs text-red-500 mt-1">{errors.phone}</p>
+                  : <p className="text-xs text-gray-400 mt-1">숫자만 입력하면 자동으로 000-0000-0000 형식으로 변환됩니다</p>
+                }
               </div>
               <div>
                 <label className={labelCls}>이메일</label>

@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useLogo } from "@/lib/logoStore";
+import { useFooter } from "@/lib/footerStore";
 import {
   LayoutDashboard,
   BookOpen,
@@ -17,7 +19,9 @@ import {
   Clock,
   Share2,
   Settings,
+  Sliders,
   MessageSquare,
+  LogOut,
 } from "lucide-react";
 
 const menuItems = [
@@ -94,6 +98,12 @@ const menuItems = [
     href: "/admin/reviews",
   },
   {
+    label: "사이트셋업",
+    sublabel: "브랜드·랜딩",
+    icon: Sliders,
+    href: "/admin/setup",
+  },
+  {
     label: "사이트설정",
     sublabel: "배경·외관",
     icon: Settings,
@@ -102,18 +112,41 @@ const menuItems = [
 ];
 
 export default function AdminSidebar() {
+  const router = useRouter();
+  const logo = useLogo();
+  const footer = useFooter();
+
+  async function handleLogout() {
+    await fetch("/api/admin/logout", { method: "POST" });
+    router.replace("/admin/login");
+  }
   const pathname = usePathname();
+
+  const showText = !logo.imageDataUrl || logo.showText;
+  const siteText = logo.text || "구름상회";
 
   return (
     <aside className="w-60 min-h-screen flex flex-col" style={{ backgroundColor: "#0D2B52" }}>
       {/* 로고 */}
       <div className="px-6 py-5 border-b border-white/10">
         <div className="flex items-center gap-2">
-          <Wind className="w-6 h-6" style={{ color: "#FF8A00" }} />
-          <div>
-            <p className="font-bold text-white text-base leading-tight">구름상회</p>
-            <p className="text-xs" style={{ color: "#2A7AE2" }}>패러글라이딩 플랫폼</p>
-          </div>
+          {logo.imageDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logo.imageDataUrl}
+              alt="로고"
+              className="h-7 w-auto object-contain"
+              style={{ filter: "brightness(0) invert(1)" }}
+            />
+          ) : (
+            <Wind className="w-6 h-6" style={{ color: "#FF8A00" }} />
+          )}
+          {showText && (
+            <div>
+              <p className="font-bold text-white text-base leading-tight">{siteText}</p>
+              <p className="text-xs" style={{ color: "#2A7AE2" }}>패러글라이딩 플랫폼</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -162,10 +195,17 @@ export default function AdminSidebar() {
         })}
       </nav>
 
-      {/* 하단 업체 정보 */}
+      {/* 하단 업체 정보 + 로그아웃 */}
       <div className="px-4 py-4 border-t border-white/10">
-        <p className="text-xs text-white/40">단양 하늘체험 패러글라이딩</p>
+        <p className="text-xs text-white/40">{footer.bizName || "단양 하늘체험 패러글라이딩"}</p>
         <p className="text-xs text-white/25 mt-0.5">관리자 계정</p>
+        <button
+          onClick={handleLogout}
+          className="mt-3 flex items-center gap-2 text-xs text-white/40 hover:text-white/70 transition-colors"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          로그아웃
+        </button>
       </div>
     </aside>
   );

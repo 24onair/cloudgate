@@ -1,22 +1,21 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   TrendingUp,
-  TrendingDown,
   Plane,
   CreditCard,
   Users,
   ArrowUpRight,
   CheckCircle2,
   Clock,
-  ChevronRight,
   Percent,
   Plus,
   X,
   Save,
   Trash2,
   Info,
+  RefreshCw,
 } from "lucide-react";
 import {
   useSettlement,
@@ -25,225 +24,166 @@ import {
   removePilotOverride,
   type PilotShareOverride,
 } from "@/lib/settlementStore";
-import { PILOTS_META } from "@/lib/scheduleStore";
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const DAILY_DATA = [
-  { date: "04/28", day: "월", flights: 5, revenue: 430000, deposit: 150000, pilot_fee: 75000 },
-  { date: "04/29", day: "화", flights: 8, revenue: 720000, deposit: 240000, pilot_fee: 120000 },
-  { date: "04/30", day: "수", flights: 3, revenue: 285000, deposit: 120000, pilot_fee: 45000 },
-  { date: "05/01", day: "목", flights: 3, revenue: 310000, deposit: 100000, pilot_fee: 45000 },
-  { date: "05/02", day: "금", flights: 0, revenue: 0, deposit: 0, pilot_fee: 0 },
-  { date: "05/03", day: "토", flights: 0, revenue: 0, deposit: 0, pilot_fee: 0 },
-  { date: "05/04", day: "일", flights: 0, revenue: 0, deposit: 0, pilot_fee: 0 },
-];
-
-const PILOT_SETTLEMENT = [
-  { name: "박구름", flights: 8, rate: 15000, amount: 120000, status: "draft" },
-  { name: "김하늘", flights: 6, rate: 15000, amount: 90000, status: "draft" },
-  { name: "이바람", flights: 5, rate: 15000, amount: 75000, status: "confirmed" },
-];
-
-const PRODUCT_BREAKDOWN: Record<string, { name: string; flights: number; revenue: number; color: string }[]> = {
-  today: [
-    { name: "베이직",   flights: 1, revenue:  80000, color: "#2A7AE2" },
-    { name: "익스트림", flights: 1, revenue: 120000, color: "#FF8A00" },
-    { name: "VIP",     flights: 1, revenue: 110000, color: "#0D2B52" },
-  ],
-  week: [
-    { name: "베이직",   flights: 11, revenue: 880000, color: "#2A7AE2" },
-    { name: "익스트림", flights:  4, revenue: 480000, color: "#FF8A00" },
-    { name: "VIP",     flights:  4, revenue: 640000, color: "#0D2B52" },
-  ],
-  month: [
-    { name: "베이직",   flights: 38, revenue: 3040000, color: "#2A7AE2" },
-    { name: "익스트림", flights: 18, revenue: 2160000, color: "#FF8A00" },
-    { name: "VIP",     flights: 12, revenue: 1920000, color: "#0D2B52" },
-  ],
-};
-
-const RECENT_COMPLETED = [
-  { id: "BK-20260501-2233", customer: "서지훈", product: "익스트림", time: "12:18", pilot: "김하늘", total: 120000, deposit: 40000 },
-  { id: "BK-20260501-1045", customer: "최현우", product: "베이직 + 사진", time: "10:43", pilot: "박구름", total: 110000, deposit: 30000 },
-  { id: "BK-20260501-1021", customer: "이수진", product: "베이직", time: "09:14", pilot: "박구름", total: 80000, deposit: 30000 },
-];
-
-const PERIOD_TABS = [
-  { label: "오늘", value: "today" },
-  { label: "이번 주", value: "week" },
-  { label: "이번 달", value: "month" },
-];
-
-// ─── Period Stats ─────────────────────────────────────────────────────────────
-
-function getPeriodStats(period: string) {
-  const days = period === "today" ? DAILY_DATA.slice(3, 4) : period === "week" ? DAILY_DATA : DAILY_DATA;
-  return {
-    revenue:   days.reduce((s, d) => s + d.revenue, 0),
-    deposit:   days.reduce((s, d) => s + d.deposit, 0),
-    flights:   days.reduce((s, d) => s + d.flights, 0),
-    pilot_fee: days.reduce((s, d) => s + d.pilot_fee, 0),
-  };
+// ─── 타입 ─────────────────────────────────────────────────────────
+interface DailyRow {
+  date:    string;
+  flights: number;
+  revenue: number;
+  deposit: number;
+  costs:   number;
 }
 
-// ─── Bar Chart ────────────────────────────────────────────────────────────────
+interface PilotRow {
+  pilot_id:       string;
+  name:           string;
+  flights:        number;
+  revenue:        number;
+  rate_per_flight:number;
+  amount:         number;
+  share?:         number; // 매출 분배 비율 (%) — 클라이언트에서 settlementStore 기준으로 재계산
+}
 
-function RevenueChart({ period }: { period: string }) {
-  const data = period === "today" ? DAILY_DATA.slice(3, 4) : DAILY_DATA;
+interface Summary {
+  revenue:     number;
+  flights:     number;
+  costs:       number;
+  profit:      number;
+  prevRevenue: number;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface CompletedBooking { id: string; booking_no: string; customer_name: string; product_name: string; flight_time: string; total_price: number; pilots: { name: string } | null; }
+
+// ─── 날짜 헬퍼 ──────────────────────────────────────────────────
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function currentPeriod() { return new Date().toISOString().slice(0, 7); }
+
+function periodRange(period: string): { from: string; to: string; label: string } {
+  const today = todayStr();
+  if (period === "today") return { from: today, to: today, label: today };
+  if (period === "week") {
+    const d = new Date();
+    d.setDate(d.getDate() - d.getDay() + 1); // 이번 주 월요일
+    const from = d.toISOString().slice(0, 10);
+    return { from, to: today, label: `${from.slice(5)} ~ ${today.slice(5)}` };
+  }
+  // month
+  const p = currentPeriod();
+  const from = `${p}-01`;
+  return { from, to: today, label: `${p.replace("-", "년 ")}월` };
+}
+
+// ─── 막대 차트 ──────────────────────────────────────────────────
+function RevenueChart({ data, period }: { data: DailyRow[]; period: string }) {
   const maxRevenue = Math.max(...data.map((d) => d.revenue), 1);
+  const { label } = periodRange(period);
 
   return (
     <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h3 className="font-semibold text-gray-900">매출 추이</h3>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {period === "today" ? "오늘" : period === "week" ? "2026.04.28 – 05.04" : "2026년 5월"}
-          </p>
+          <p className="text-xs text-gray-400 mt-0.5">{label}</p>
         </div>
         <div className="flex items-center gap-4 text-xs text-gray-400">
           <span className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: "#2A7AE2" }} />
-            매출
+            <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: "#2A7AE2" }} />매출
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: "#E5EDFD" }} />
-            파일럿 정산
+            <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: "#FCA5A5" }} />비용
           </span>
         </div>
       </div>
 
-      {/* ── 막대 영역 (고정 높이) ── */}
-      <div className="flex items-end gap-2 h-36 mb-1">
-        {data.map((d) => {
-          const revenueH = d.revenue ? Math.round((d.revenue / maxRevenue) * 128) : 0;
-          const feeH     = d.pilot_fee ? Math.round((d.pilot_fee / maxRevenue) * 128) : 0;
-          // 주간·월간 뷰에서만 오늘 날짜 강조 (범례와 색상 일치를 위해 오늘 탭은 제외)
-          const isToday  = period !== "today" && d.date === "05/01";
-          return (
-            <div key={d.date} className="flex-1 flex items-end gap-0.5 h-full">
-              <div className="flex-1 rounded-t-md transition-all" style={{
-                height: revenueH || 4,
-                backgroundColor: isToday ? "#FF8A00" : "#2A7AE2",
-                opacity: d.revenue === 0 ? 0.15 : 1,
-              }} />
-              <div className="flex-1 rounded-t-md" style={{
-                height: feeH || 4,
-                backgroundColor: isToday ? "#FDD9A0" : "#E5EDFD",
-                opacity: d.pilot_fee === 0 ? 0.15 : 1,
-              }} />
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ── 레이블 영역 (막대 아래 고정) ── */}
-      <div className="flex gap-2">
-        {data.map((d) => {
-          const isToday = period !== "today" && d.date === "05/01";
-          return (
-            <div key={d.date} className="flex-1 flex flex-col items-center gap-0.5 pt-1">
-              {d.revenue > 0 && (
-                <p className="text-[10px] font-semibold leading-tight" style={{ color: isToday ? "#FF8A00" : "#2A7AE2" }}>
-                  {d.revenue.toLocaleString("ko-KR")}
-                </p>
-              )}
-              <p className="text-[10px] text-gray-400">{d.date}</p>
-              <p className="text-[10px] font-medium" style={{ color: isToday ? "#FF8A00" : "#9CA3AF" }}>
-                {d.day}
-              </p>
-            </div>
-          );
-        })}
-      </div>
+      {data.length === 0 ? (
+        <div className="h-36 flex items-center justify-center text-sm text-gray-400">데이터 없음</div>
+      ) : (
+        <>
+          <div className="flex items-end gap-2 h-36 mb-1">
+            {data.map((d) => {
+              const rH = d.revenue ? Math.round((d.revenue / maxRevenue) * 128) : 0;
+              const cH = d.costs   ? Math.round((d.costs   / maxRevenue) * 128) : 0;
+              const isToday = d.date === todayStr();
+              return (
+                <div key={d.date} className="flex-1 flex items-end gap-0.5 h-full">
+                  <div className="flex-1 rounded-t-md transition-all" title={`매출: ${d.revenue.toLocaleString()}원`}
+                    style={{ height: rH || 4, backgroundColor: isToday ? "#FF8A00" : "#2A7AE2", opacity: d.revenue === 0 ? 0.15 : 1 }} />
+                  <div className="flex-1 rounded-t-md" title={`비용: ${d.costs.toLocaleString()}원`}
+                    style={{ height: cH || 4, backgroundColor: "#FCA5A5", opacity: d.costs === 0 ? 0.15 : 1 }} />
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex gap-2">
+            {data.map((d) => {
+              const isToday = d.date === todayStr();
+              const label = d.date.slice(5).replace("-", "/");
+              return (
+                <div key={d.date} className="flex-1 flex flex-col items-center gap-0.5 pt-1">
+                  {d.revenue > 0 && (
+                    <p className="text-[10px] font-semibold leading-tight" style={{ color: isToday ? "#FF8A00" : "#2A7AE2" }}>
+                      {Math.round(d.revenue / 10000)}만
+                    </p>
+                  )}
+                  <p className="text-[10px] text-gray-400">{label}</p>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-// ─── 분배 비율 관리 카드 ──────────────────────────────────────────────────
-function SplitRatioCard() {
+// ─── 분배 비율 관리 카드 (localStorage 기반 유지) ─────────────────
+function SplitRatioCard({ pilots }: { pilots: PilotRow[] }) {
   const { cfg, overrides } = useSettlement();
-  const [draft, setDraft] = useState(cfg.defaultPilotShare);
-  const [dirty, setDirty] = useState(false);
+  const [draft, setDraft]   = useState(cfg.defaultPilotShare);
+  const [dirty, setDirty]   = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [newOverride, setNewOverride] = useState<PilotShareOverride>({
-    pilotId: "", pilotShare: cfg.defaultPilotShare, reason: "",
-  });
+  const [newOverride, setNewOverride] = useState<PilotShareOverride>({ pilotId: "", pilotShare: cfg.defaultPilotShare, reason: "" });
 
-  // cfg가 외부에서 변경되면 draft 동기화 (단, dirty 상태가 아닐 때만)
-  useEffect(() => {
-    if (!dirty) setDraft(cfg.defaultPilotShare);
-  }, [cfg.defaultPilotShare, dirty]);
+  useEffect(() => { if (!dirty) setDraft(cfg.defaultPilotShare); }, [cfg.defaultPilotShare, dirty]);
 
-  const overrideList = Object.values(overrides);
-  const availablePilots = PILOTS_META.filter((p) => !overrides[p.id]);
-
-  function saveDefault() {
-    updateSettlementConfig({ defaultPilotShare: draft });
-    setDirty(false);
-  }
-
-  function addOverride() {
-    if (!newOverride.pilotId) return;
-    setPilotOverride(newOverride);
-    setShowAdd(false);
-    setNewOverride({ pilotId: "", pilotShare: cfg.defaultPilotShare, reason: "" });
-  }
+  const overrideList   = Object.values(overrides);
+  const availablePilots = pilots.filter((p) => !overrides[p.pilot_id] && p.pilot_id !== "unassigned");
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Percent className="w-4 h-4" style={{ color: "#2A7AE2" }} />
-          <h3 className="font-semibold text-gray-900">분배 비율 관리</h3>
-          <span className="text-xs text-gray-400">파일럿 ↔ 회사 매출 분배</span>
-        </div>
+      <div className="flex items-center gap-2 mb-4">
+        <Percent className="w-4 h-4" style={{ color: "#2A7AE2" }} />
+        <h3 className="font-semibold text-gray-900">분배 비율 관리</h3>
+        <span className="text-xs text-gray-400">파일럿 ↔ 회사 매출 분배</span>
       </div>
 
-      {/* 기본 비율 (전체 일괄 적용) */}
       <div className="rounded-xl border border-gray-100 p-4 mb-4" style={{ backgroundColor: "#F8FAFC" }}>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-bold text-gray-700">기본 분배 비율 (전체 파일럿 일괄 적용)</p>
+          <p className="text-sm font-bold text-gray-700">기본 분배 비율 (전체 일괄)</p>
           {dirty && (
-            <button
-              onClick={saveDefault}
+            <button onClick={() => { updateSettlementConfig({ defaultPilotShare: draft }); setDirty(false); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white"
-              style={{ backgroundColor: "#0D2B52" }}
-            >
+              style={{ backgroundColor: "#0D2B52" }}>
               <Save className="w-3.5 h-3.5" /> 저장
             </button>
           )}
         </div>
-
         <div className="flex items-center gap-3">
           <div className="flex-1">
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={draft}
-              onChange={(e) => { setDraft(Number(e.target.value)); setDirty(true); }}
-              className="w-full"
-            />
+            <input type="range" min={0} max={100} value={draft}
+              onChange={(e) => { setDraft(Number(e.target.value)); setDirty(true); }} className="w-full" />
             <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
-              <span>회사 100%</span>
-              <span>파일럿 100%</span>
+              <span>회사 100%</span><span>파일럿 100%</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={draft}
+            <input type="number" min={0} max={100} value={draft}
               onChange={(e) => { setDraft(Math.max(0, Math.min(100, Number(e.target.value) || 0))); setDirty(true); }}
-              className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center font-bold outline-none focus:ring-2 focus:ring-blue-200"
-            />
+              className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center font-bold outline-none" />
             <span className="text-sm text-gray-500">%</span>
           </div>
         </div>
-
         <div className="grid grid-cols-2 gap-2 mt-3">
           <div className="rounded-lg p-2.5 text-center" style={{ backgroundColor: "#EFF6FF" }}>
             <p className="text-[10px] font-medium text-blue-700">파일럿</p>
@@ -256,44 +196,27 @@ function SplitRatioCard() {
         </div>
       </div>
 
-      {/* 예외 적용 (특정 파일럿만 다른 비율) */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <p className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
-            예외 적용 파일럿
-            <span className="text-xs font-normal text-gray-400">{overrideList.length}명</span>
-          </p>
+          <p className="text-sm font-bold text-gray-700">예외 적용 파일럿 <span className="text-xs font-normal text-gray-400">{overrideList.length}명</span></p>
           {availablePilots.length > 0 && !showAdd && (
-            <button
-              onClick={() => {
-                setNewOverride({ pilotId: availablePilots[0].id, pilotShare: cfg.defaultPilotShare, reason: "" });
-                setShowAdd(true);
-              }}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white"
-              style={{ backgroundColor: "#2A7AE2" }}
-            >
+            <button onClick={() => { setNewOverride({ pilotId: availablePilots[0].pilot_id, pilotShare: cfg.defaultPilotShare, reason: "" }); setShowAdd(true); }}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white" style={{ backgroundColor: "#2A7AE2" }}>
               <Plus className="w-3 h-3" /> 추가
             </button>
           )}
         </div>
-
         {overrideList.length === 0 && !showAdd && (
-          <p className="text-xs text-gray-400 px-3 py-3 rounded-lg bg-gray-50 text-center">
-            모든 파일럿이 기본 비율로 정산됩니다
-          </p>
+          <p className="text-xs text-gray-400 px-3 py-3 rounded-lg bg-gray-50 text-center">모든 파일럿이 기본 비율로 정산됩니다</p>
         )}
-
         {overrideList.map((o) => {
-          const pilot = PILOTS_META.find((p) => p.id === o.pilotId);
+          const pilot = pilots.find((p) => p.pilot_id === o.pilotId);
           if (!pilot) return null;
           return (
             <div key={o.pilotId} className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-amber-100 bg-amber-50 mb-2">
-              <span
-                className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                style={{ backgroundColor: pilot.avatarColor }}
-              >
-                {pilot.initials}
-              </span>
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ backgroundColor: "#0D2B52" }}>
+                {pilot.name[0]}
+              </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-800">{pilot.name}</p>
                 {o.reason && <p className="text-[10px] text-gray-500 truncate">{o.reason}</p>}
@@ -303,74 +226,36 @@ function SplitRatioCard() {
                 <span className="text-gray-300">/</span>
                 <span className="font-bold" style={{ color: "#FF8A00" }}>회사 {100 - o.pilotShare}%</span>
               </div>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={o.pilotShare}
-                onChange={(e) =>
-                  setPilotOverride({ ...o, pilotShare: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })
-                }
-                className="w-14 border border-gray-200 rounded-lg px-2 py-1 text-xs text-center bg-white"
-              />
-              <button
-                onClick={() => removePilotOverride(o.pilotId)}
-                className="p-1.5 rounded-lg hover:bg-red-100"
-                title="기본 비율로 되돌리기"
-              >
+              <input type="number" min={0} max={100} value={o.pilotShare}
+                onChange={(e) => setPilotOverride({ ...o, pilotShare: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+                className="w-14 border border-gray-200 rounded-lg px-2 py-1 text-xs text-center bg-white" />
+              <button onClick={() => removePilotOverride(o.pilotId)} className="p-1.5 rounded-lg hover:bg-red-100" title="기본 비율로 되돌리기">
                 <Trash2 className="w-3.5 h-3.5 text-red-500" />
               </button>
             </div>
           );
         })}
-
         {showAdd && availablePilots.length > 0 && (
           <div className="rounded-xl border-2 border-blue-200 p-3 bg-blue-50">
             <div className="grid grid-cols-2 gap-2 mb-2">
-              <select
-                value={newOverride.pilotId}
-                onChange={(e) => setNewOverride({ ...newOverride, pilotId: e.target.value })}
-                className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white"
-              >
-                {availablePilots.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
+              <select value={newOverride.pilotId} onChange={(e) => setNewOverride({ ...newOverride, pilotId: e.target.value })}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white">
+                {availablePilots.map((p) => <option key={p.pilot_id} value={p.pilot_id}>{p.name}</option>)}
               </select>
               <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={newOverride.pilotShare}
-                  onChange={(e) =>
-                    setNewOverride({ ...newOverride, pilotShare: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })
-                  }
-                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center bg-white"
-                />
+                <input type="number" min={0} max={100} value={newOverride.pilotShare}
+                  onChange={(e) => setNewOverride({ ...newOverride, pilotShare: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center bg-white" />
                 <span className="text-sm text-gray-500">%</span>
               </div>
             </div>
-            <input
-              value={newOverride.reason ?? ""}
-              onChange={(e) => setNewOverride({ ...newOverride, reason: e.target.value })}
-              placeholder="사유 (선택, 예: 시니어 파일럿 인센티브)"
-              maxLength={40}
-              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white"
-            />
-            <div className="flex gap-2 mt-2">
-              <button
-                onClick={() => setShowAdd(false)}
-                className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-gray-200 bg-white"
-              >
-                취소
-              </button>
-              <button
-                onClick={addOverride}
-                className="flex-1 py-1.5 rounded-lg text-xs font-bold text-white"
-                style={{ backgroundColor: "#0D2B52" }}
-              >
-                저장
-              </button>
+            <input value={newOverride.reason ?? ""} onChange={(e) => setNewOverride({ ...newOverride, reason: e.target.value })}
+              placeholder="사유 (선택)" maxLength={40}
+              className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white mb-2" />
+            <div className="flex gap-2">
+              <button onClick={() => setShowAdd(false)} className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-gray-200 bg-white">취소</button>
+              <button onClick={() => { if (newOverride.pilotId) { setPilotOverride(newOverride); setShowAdd(false); } }}
+                className="flex-1 py-1.5 rounded-lg text-xs font-bold text-white" style={{ backgroundColor: "#0D2B52" }}>저장</button>
             </div>
           </div>
         )}
@@ -378,78 +263,117 @@ function SplitRatioCard() {
 
       <div className="rounded-lg bg-gray-50 px-3 py-2 mt-3 text-[11px] text-gray-500 flex items-start gap-1.5">
         <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
-        <span>
-          비행 1건의 매출 = 파일럿 정산 + 회사 매출. 예외 적용된 파일럿은 본인 화면에 별도 표시되지 않으며,
-          정산 확정 시 적용 비율로 자동 계산됩니다.
-        </span>
+        <span>비행 1건의 매출 = 파일럿 정산 + 회사 매출. 예외 적용된 파일럿은 별도 비율로 자동 계산됩니다.</span>
       </div>
     </div>
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
-
-function getPeriodLabel(period: string): string {
-  if (period === "today") return "2026.05.03";
-  if (period === "week")  return "04.28 ~ 05.04";
-  if (period === "month") return "2026년 5월";
-  return "";
-}
+// ─── 메인 ────────────────────────────────────────────────────────
+const PERIOD_TABS = [
+  { label: "오늘",    value: "today" },
+  { label: "이번 주", value: "week"  },
+  { label: "이번 달", value: "month" },
+];
 
 export default function SettlementPage() {
   const [period, setPeriod] = useState("week");
-  const [now, setNow] = useState(() => new Date());
+  const [daily,   setDaily]   = useState<DailyRow[]>([]);
+  const [pilots,  setPilots]  = useState<PilotRow[]>([]);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [todayCompleted, setTodayCompleted] = useState<CompletedBooking[]>([]);
+  const [loading, setLoading] = useState(true);
 
+  const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 60000);
-    return () => clearInterval(timer);
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
   }, []);
 
-  const stats = useMemo(() => getPeriodStats(period), [period]);
-  const netProfit = stats.revenue - stats.pilot_fee;
-  const totalPilotFee = PILOT_SETTLEMENT.reduce((s, p) => s + p.amount, 0);
-  const totalFlights = PILOT_SETTLEMENT.reduce((s, p) => s + p.flights, 0);
-  const productBreakdown    = PRODUCT_BREAKDOWN[period] ?? PRODUCT_BREAKDOWN.week;
-  const totalProductRevenue = productBreakdown.reduce((s, p) => s + p.revenue, 0);
+  const { from, to, label } = useMemo(() => periodRange(period), [period]);
+  const p = useMemo(() => currentPeriod(), []);
+
+  // ── 분배 비율 (settlementStore — localStorage) ──
+  const { cfg, overrides } = useSettlement();
+
+  // ── 매출 분배율 기준으로 파일럿 정산액 재계산 ──
+  // API가 반환하는 amount(건당 단가 기반)를 무시하고,
+  // 각 파일럿의 revenue × pilotShare(%) 로 덮어씀
+  const computedPilots: PilotRow[] = useMemo(() => {
+    return pilots.map((pilot) => {
+      const override = overrides[pilot.pilot_id];
+      const share = override ? override.pilotShare : cfg.defaultPilotShare;
+      return {
+        ...pilot,
+        share,
+        amount: Math.round((pilot.revenue * share) / 100),
+      };
+    });
+  }, [pilots, cfg, overrides]);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [dRes, pRes, sRes, bRes] = await Promise.all([
+        fetch(`/api/settlement?type=daily&from=${from}&to=${to}`),
+        fetch(`/api/settlement?type=pilots&from=${from}&to=${to}`),
+        fetch(`/api/settlement?type=summary&period=${p}`),
+        fetch(`/api/bookings?date=${todayStr()}&status=completed`),
+      ]);
+      if (dRes.ok) setDaily(await dRes.json());
+      if (pRes.ok) setPilots(await pRes.json());
+      if (sRes.ok) setSummary(await sRes.json());
+      if (bRes.ok) setTodayCompleted(await bRes.json());
+    } finally {
+      setLoading(false);
+    }
+  }, [from, to, p]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── KPI 계산 ──
+  const totalRevenue  = daily.reduce((s, d) => s + d.revenue, 0);
+  const totalFlights  = daily.reduce((s, d) => s + d.flights, 0);
+  // totalPilotFee: 매출 분배율 기준 (건당 단가 아님)
+  const totalPilotFee = computedPilots.reduce((s, p) => s + p.amount, 0);
+  const totalCosts    = daily.reduce((s, d) => s + d.costs, 0);
+  const netProfit     = totalRevenue - totalPilotFee - totalCosts;
+
+  const prevRevenue = summary?.prevRevenue ?? 0;
+  const revenueChange = prevRevenue > 0 ? Math.round(((totalRevenue - prevRevenue) / prevRevenue) * 100) : null;
 
   const nowStr = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
   return (
     <div className="p-6 max-w-7xl">
-      {/* Header */}
+
+      {/* 헤더 */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <div className="flex items-baseline gap-3">
             <h1 className="text-2xl font-bold" style={{ color: "#0D2B52" }}>계산대</h1>
             <span className="text-sm font-medium" style={{ color: "#2A7AE2" }}>{nowStr}</span>
           </div>
-          <p className="text-sm text-gray-400 mt-0.5">매출 & 정산 현황</p>
+          <p className="text-sm text-gray-400 mt-0.5">매출 & 정산 현황 · {label}</p>
         </div>
-        {/* Period tabs */}
-        <div className="flex flex-col items-end gap-1">
+        <div className="flex items-center gap-2">
+          {/* 기간 탭 */}
           <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100">
             {PERIOD_TABS.map((tab) => (
-              <button
-                key={tab.value}
-                onClick={() => setPeriod(tab.value)}
+              <button key={tab.value} onClick={() => setPeriod(tab.value)}
                 className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all"
-                style={
-                  period === tab.value
-                    ? { backgroundColor: "#0D2B52", color: "white" }
-                    : { color: "#6B7280" }
-                }
-              >
+                style={period === tab.value ? { backgroundColor: "#0D2B52", color: "white" } : { color: "#6B7280" }}>
                 {tab.label}
               </button>
             ))}
           </div>
-          <span className="text-xs font-medium pr-1" style={{ color: "#2A7AE2" }}>
-            {getPeriodLabel(period)}
-          </span>
+          <button onClick={fetchData} className="p-2 rounded-xl bg-white border border-gray-100 shadow-sm hover:bg-gray-50">
+            <RefreshCw className={`w-4 h-4 text-gray-400 ${loading ? "animate-spin" : ""}`} />
+          </button>
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI 카드 */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         {/* 총 매출 */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
@@ -457,7 +381,7 @@ export default function SettlementPage() {
             <div>
               <p className="text-xs text-gray-400 mb-1">총 매출</p>
               <p className="text-2xl font-bold" style={{ color: "#0D2B52" }}>
-                {stats.revenue.toLocaleString("ko-KR")}
+                {loading ? "—" : totalRevenue.toLocaleString()}
                 <span className="text-sm font-normal text-gray-400 ml-1">원</span>
               </p>
             </div>
@@ -465,10 +389,12 @@ export default function SettlementPage() {
               <TrendingUp className="w-4 h-4" style={{ color: "#2A7AE2" }} />
             </div>
           </div>
-          <div className="flex items-center gap-1 mt-3 text-xs" style={{ color: "#15803D" }}>
-            <ArrowUpRight className="w-3 h-3" />
-            <span>지난 주 대비 +12%</span>
-          </div>
+          {revenueChange !== null && (
+            <div className="flex items-center gap-1 mt-3 text-xs" style={{ color: revenueChange >= 0 ? "#15803D" : "#DC2626" }}>
+              <ArrowUpRight className="w-3 h-3" style={{ transform: revenueChange < 0 ? "rotate(90deg)" : "none" }} />
+              <span>전월 대비 {revenueChange >= 0 ? "+" : ""}{revenueChange}%</span>
+            </div>
+          )}
         </div>
 
         {/* 완료 비행 */}
@@ -477,18 +403,16 @@ export default function SettlementPage() {
             <div>
               <p className="text-xs text-gray-400 mb-1">완료 비행</p>
               <p className="text-2xl font-bold" style={{ color: "#0D2B52" }}>
-                {stats.flights}
+                {loading ? "—" : totalFlights}
                 <span className="text-sm font-normal text-gray-400 ml-1">건</span>
               </p>
-              <p className="text-xs text-gray-500 mt-1">평균 {stats.flights > 0 ? Math.round(stats.revenue / stats.flights).toLocaleString() : 0}원/건</p>
+              <p className="text-xs text-gray-500 mt-1">
+                평균 {totalFlights > 0 ? Math.round(totalRevenue / totalFlights).toLocaleString() : 0}원/건
+              </p>
             </div>
             <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#FFF3E6" }}>
               <Plane className="w-4 h-4" style={{ color: "#FF8A00" }} />
             </div>
-          </div>
-          <div className="flex items-center gap-1 mt-3 text-xs" style={{ color: "#15803D" }}>
-            <ArrowUpRight className="w-3 h-3" />
-            <span>지난 주 대비 +3건</span>
           </div>
         </div>
 
@@ -498,7 +422,7 @@ export default function SettlementPage() {
             <div>
               <p className="text-xs text-gray-400 mb-1">파일럿 정산</p>
               <p className="text-2xl font-bold" style={{ color: "#0D2B52" }}>
-                {stats.pilot_fee.toLocaleString("ko-KR")}
+                {loading ? "—" : totalPilotFee.toLocaleString()}
                 <span className="text-sm font-normal text-gray-400 ml-1">원</span>
               </p>
             </div>
@@ -507,7 +431,7 @@ export default function SettlementPage() {
             </div>
           </div>
           <p className="text-xs text-gray-400 mt-3">
-            매출 대비 {stats.revenue > 0 ? Math.round((stats.pilot_fee / stats.revenue) * 100) : 0}%
+            매출 대비 {totalRevenue > 0 ? Math.round((totalPilotFee / totalRevenue) * 100) : 0}%
           </p>
         </div>
 
@@ -517,7 +441,7 @@ export default function SettlementPage() {
             <div>
               <p className="text-xs mb-1" style={{ color: "rgba(255,255,255,0.6)" }}>순수익 추정</p>
               <p className="text-2xl font-bold text-white">
-                {netProfit.toLocaleString("ko-KR")}
+                {loading ? "—" : netProfit.toLocaleString()}
                 <span className="text-sm font-normal ml-1" style={{ color: "rgba(255,255,255,0.6)" }}>원</span>
               </p>
             </div>
@@ -525,192 +449,121 @@ export default function SettlementPage() {
               <CreditCard className="w-4 h-4 text-white" />
             </div>
           </div>
-          <p className="text-xs mt-3" style={{ color: "rgba(255,255,255,0.5)" }}>
-            매출 - 파일럿 정산액 기준
-          </p>
+          <p className="text-xs mt-3" style={{ color: "rgba(255,255,255,0.5)" }}>매출 - 파일럿 정산 - 비용</p>
         </div>
       </div>
 
-      {/* Chart + Product Breakdown */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        {/* Bar Chart (2/3) */}
-        <div className="col-span-2">
-          <RevenueChart period={period} />
-        </div>
-
-        {/* Product Breakdown (1/3) */}
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-          <h3 className="font-semibold text-gray-900 mb-1">상품별 매출</h3>
-          <p className="text-xs text-gray-400 mb-4">
-            {period === "today" ? "오늘 기준" : period === "week" ? "이번 주 기준" : "이번 달 기준"}
-          </p>
-
-          {/* Stacked bar */}
-          <div className="flex rounded-full h-3 overflow-hidden mb-4">
-            {productBreakdown.map((p) => (
-              <div
-                key={p.name}
-                style={{
-                  width: `${Math.round((p.revenue / totalProductRevenue) * 100)}%`,
-                  backgroundColor: p.color,
-                }}
-              />
-            ))}
-          </div>
-
-          <div className="space-y-3">
-            {productBreakdown.map((p) => (
-              <div key={p.name} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: p.color }}
-                  />
-                  <span className="text-sm text-gray-700">{p.name}</span>
-                  <span className="text-xs text-gray-400">{p.flights}건</span>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold" style={{ color: "#0D2B52" }}>
-                    {p.revenue.toLocaleString("ko-KR")}원
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {Math.round((p.revenue / totalProductRevenue) * 100)}%
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="border-t border-gray-100 mt-4 pt-3 flex justify-between text-sm">
-            <span className="text-gray-500">합계</span>
-            <span className="font-bold" style={{ color: "#0D2B52" }}>
-              {totalProductRevenue.toLocaleString("ko-KR")}원
-            </span>
-          </div>
-        </div>
+      {/* 차트 */}
+      <div className="mb-6">
+        <RevenueChart data={daily} period={period} />
       </div>
 
       {/* 분배 비율 관리 */}
-      <SplitRatioCard />
+      <SplitRatioCard pilots={computedPilots} />
 
-      {/* Pilot Settlement + Recent Completed */}
+      {/* 파일럿 정산 + 오늘 완료 내역 */}
       <div className="grid grid-cols-2 gap-4">
-        {/* Pilot Settlement */}
+
+        {/* 파일럿 정산 */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
             <div>
               <h3 className="font-semibold text-gray-900">파일럿 정산 현황</h3>
-              <p className="text-xs text-gray-400">2026.04.28 – 05.04</p>
+              <p className="text-xs text-gray-400">{label}</p>
             </div>
-            <span className="text-xs px-2 py-1 rounded-full font-medium" style={{ backgroundColor: "#FEF3C7", color: "#D97706" }}>
-              검토 중
-            </span>
           </div>
 
-          {/* Table header */}
           <div className="grid px-5 py-2.5 text-xs font-semibold text-gray-400 border-b border-gray-50"
-            style={{ gridTemplateColumns: "1fr 0.6fr 0.8fr 1fr 0.8fr" }}>
+            style={{ gridTemplateColumns: "1fr 0.6fr 0.6fr 1fr" }}>
             <span>파일럿</span>
             <span className="text-right">건수</span>
-            <span className="text-right">단가</span>
+            <span className="text-right">비율</span>
             <span className="text-right">정산액</span>
-            <span className="text-right">상태</span>
           </div>
 
-          {PILOT_SETTLEMENT.map((p) => (
-            <div key={p.name}
+          {loading ? (
+            <div className="px-5 py-8 text-center text-sm text-gray-400">불러오는 중…</div>
+          ) : computedPilots.length === 0 ? (
+            <div className="px-5 py-8 text-center text-sm text-gray-400">정산 데이터 없음</div>
+          ) : computedPilots.map((p) => (
+            <div key={p.pilot_id}
               className="grid items-center px-5 py-3.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors"
-              style={{ gridTemplateColumns: "1fr 0.6fr 0.8fr 1fr 0.8fr" }}>
+              style={{ gridTemplateColumns: "1fr 0.6fr 0.6fr 1fr" }}>
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                  style={{ backgroundColor: "#0D2B52" }}>
-                  {p.name[0]}
-                </div>
+                  style={{ backgroundColor: "#0D2B52" }}>{p.name[0]}</div>
                 <span className="text-sm font-medium text-gray-800">{p.name}</span>
               </div>
               <span className="text-sm text-gray-600 text-right">{p.flights}건</span>
-              <span className="text-sm text-gray-600 text-right">{p.rate.toLocaleString()}원</span>
-              <span className="text-sm font-semibold text-right" style={{ color: "#0D2B52" }}>
-                {p.amount.toLocaleString()}원
-              </span>
-              <div className="flex justify-end">
-                {p.status === "confirmed" ? (
-                  <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{ backgroundColor: "#DCFCE7", color: "#15803D" }}>확정</span>
-                ) : (
-                  <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{ backgroundColor: "#F3F4F6", color: "#6B7280" }}>검토</span>
-                )}
-              </div>
+              <span className="text-sm font-semibold text-right" style={{ color: "#2A7AE2" }}>{p.share ?? cfg.defaultPilotShare}%</span>
+              <span className="text-sm font-semibold text-right" style={{ color: "#0D2B52" }}>{p.amount.toLocaleString()}원</span>
             </div>
           ))}
 
-          {/* Total */}
-          <div className="grid px-5 py-3.5 border-t-2 border-gray-100"
-            style={{ gridTemplateColumns: "1fr 0.6fr 0.8fr 1fr 0.8fr" }}>
-            <span className="text-sm font-semibold text-gray-700">합계</span>
-            <span className="text-sm font-semibold text-gray-700 text-right">{totalFlights}건</span>
-            <span />
-            <span className="text-sm font-bold text-right" style={{ color: "#0D2B52" }}>
-              {totalPilotFee.toLocaleString()}원
-            </span>
-            <div className="flex justify-end">
-              <button className="text-xs px-2 py-1 rounded-lg font-medium text-white transition-opacity hover:opacity-90"
-                style={{ backgroundColor: "#2A7AE2" }}>
-                정산 확정
-              </button>
+          {computedPilots.length > 0 && (
+            <div className="grid px-5 py-3.5 border-t-2 border-gray-100"
+              style={{ gridTemplateColumns: "1fr 0.6fr 0.6fr 1fr" }}>
+              <span className="text-sm font-semibold text-gray-700">합계</span>
+              <span className="text-sm font-semibold text-gray-700 text-right">
+                {computedPilots.reduce((s, p) => s + p.flights, 0)}건
+              </span>
+              <span />
+              <span className="text-sm font-bold text-right" style={{ color: "#0D2B52" }}>
+                {totalPilotFee.toLocaleString()}원
+              </span>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Recent Completed */}
+        {/* 오늘 완료 내역 */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
             <div>
               <h3 className="font-semibold text-gray-900">오늘 완료 내역</h3>
-              <p className="text-xs text-gray-400">2026-05-01</p>
+              <p className="text-xs text-gray-400">{todayStr()}</p>
             </div>
             <div className="flex items-center gap-1 text-xs" style={{ color: "#2A7AE2" }}>
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>{RECENT_COMPLETED.length}건 완료</span>
+              <span>{todayCompleted.length}건 완료</span>
             </div>
           </div>
 
-          {RECENT_COMPLETED.map((b, i) => (
-            <div key={b.id} className={`px-5 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors ${i < RECENT_COMPLETED.length - 1 ? "border-b border-gray-50" : ""}`}>
+          {loading ? (
+            <div className="px-5 py-8 text-center text-sm text-gray-400">불러오는 중…</div>
+          ) : todayCompleted.length === 0 ? (
+            <div className="px-5 py-8 text-center text-sm text-gray-400">오늘 완료된 비행이 없습니다</div>
+          ) : todayCompleted.map((b, i) => (
+            <div key={b.id}
+              className={`px-5 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors ${i < todayCompleted.length - 1 ? "border-b border-gray-50" : ""}`}>
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                  style={{ backgroundColor: "#0D2B52" }}>
-                  {b.customer[0]}
-                </div>
+                  style={{ backgroundColor: "#0D2B52" }}>{b.customer_name[0]}</div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{b.customer}</p>
-                  <p className="text-xs text-gray-400">{b.product} · {b.pilot} 파일럿</p>
+                  <p className="text-sm font-medium text-gray-900">{b.customer_name}</p>
+                  <p className="text-xs text-gray-400">{b.product_name} · {b.pilots?.name ?? "미배정"} 파일럿</p>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-sm font-semibold" style={{ color: "#0D2B52" }}>
-                  {b.total.toLocaleString()}원
-                </p>
+                <p className="text-sm font-semibold" style={{ color: "#0D2B52" }}>{b.total_price.toLocaleString()}원</p>
                 <div className="flex items-center gap-1 justify-end mt-0.5">
                   <CheckCircle2 className="w-3 h-3" style={{ color: "#22C55E" }} />
-                  <p className="text-xs text-gray-400">착륙 {b.time}</p>
+                  <p className="text-xs text-gray-400">{b.flight_time}</p>
                 </div>
               </div>
             </div>
           ))}
 
-          {/* Daily total */}
-          <div className="px-5 py-3.5 border-t-2 border-gray-100 flex items-center justify-between"
-            style={{ backgroundColor: "#F5F7FA" }}>
-            <div className="flex items-center gap-2">
-              <Clock className="w-3.5 h-3.5 text-gray-400" />
-              <span className="text-sm text-gray-500">오늘 매출 합계</span>
+          {todayCompleted.length > 0 && (
+            <div className="px-5 py-3.5 border-t-2 border-gray-100 flex items-center justify-between" style={{ backgroundColor: "#F5F7FA" }}>
+              <div className="flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-gray-400" />
+                <span className="text-sm text-gray-500">오늘 매출 합계</span>
+              </div>
+              <span className="text-sm font-bold" style={{ color: "#0D2B52" }}>
+                {todayCompleted.reduce((s, b) => s + b.total_price, 0).toLocaleString()}원
+              </span>
             </div>
-            <span className="text-sm font-bold" style={{ color: "#0D2B52" }}>
-              {RECENT_COMPLETED.reduce((s, b) => s + b.total, 0).toLocaleString()}원
-            </span>
-          </div>
+          )}
         </div>
       </div>
     </div>

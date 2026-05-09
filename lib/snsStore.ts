@@ -28,6 +28,19 @@ export interface SnsProfile {
   youtubeLastFetchedAt?: string; // ISO 시각
 }
 
+// TODO: API — SNS 데이터 localStorage → API 교체
+// loadProfile()         → GET   /api/sns/profile
+// updateSnsProfile()    → PATCH /api/sns/profile
+// loadPosts()           → GET   /api/sns/posts
+// addInstagramPost()    → POST  /api/sns/posts
+// updateInstagramPost() → PATCH /api/sns/posts/:id
+// deleteInstagramPost() → DELETE /api/sns/posts/:id
+// loadShorts()          → GET   /api/sns/shorts
+// addYoutubeShort()     → POST  /api/sns/shorts
+// updateYoutubeShort()  → PATCH /api/sns/shorts/:id
+// deleteYoutubeShort()  → DELETE /api/sns/shorts/:id
+// saveFetchedShorts()   → POST  /api/sns/shorts/fetched (RSS 자동가져오기 결과 저장)
+
 const POSTS_KEY     = "gureum_instagram_posts";
 const SHORTS_KEY    = "gureum_youtube_shorts";
 const FETCHED_KEY   = "gureum_youtube_fetched";

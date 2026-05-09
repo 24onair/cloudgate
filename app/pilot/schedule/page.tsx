@@ -22,6 +22,10 @@ import {
 } from "@/lib/scheduleStore";
 
 // ── 상수 ─────────────────────────────────────────────────────────
+// TODO: API — MY_PILOT_ID 하드코딩 → 로그인 세션에서 파일럿 ID 추출
+// TODO: API — 스케줄 조회 → GET /api/pilot/me/schedule (query: ?year=&month=)
+// TODO: API — 스케줄 저장(updatePilotSchedule) → PATCH /api/pilot/me/schedule/:date { status }
+// TODO: API — 기타 사유(updatePilotNote) → PATCH /api/pilot/me/schedule/:date/note { note }
 const MY_PILOT_ID = "p1";
 const TODAY = "2026-05-03";
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];

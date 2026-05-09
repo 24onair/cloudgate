@@ -108,15 +108,36 @@ function StatusBadge({ status }: { status: BookingStatus }) {
 
 // ─── Detail Panel ─────────────────────────────────────────────────────────────
 
+interface PilotOption { id: string; name: string; }
+
 function DetailPanel({
   booking,
   onClose,
   onStatusChange,
+  onPilotChange,
 }: {
   booking: ApiBooking;
   onClose: () => void;
   onStatusChange: (id: string, status: BookingStatus) => Promise<void>;
+  onPilotChange: (id: string, pilotId: string | null) => Promise<void>;
 }) {
+  const [pilots, setPilots]       = useState<PilotOption[]>([]);
+  const [assigning, setAssigning] = useState(false);
+
+  // 패널 열릴 때 파일럿 목록 조회
+  useEffect(() => {
+    fetch("/api/pilots?status=active")
+      .then((r) => r.json())
+      .then((data: PilotOption[]) => setPilots(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+
+  async function handlePilotSelect(pilotId: string) {
+    setAssigning(true);
+    await onPilotChange(booking.id, pilotId || null);
+    setAssigning(false);
+  }
+
   const nextActions: { label: string; status: BookingStatus; color: string }[] = [];
   if (booking.status === "pending")
     nextActions.push({ label: "예약 확정", status: "confirmed", color: "#2A7AE2" });
@@ -210,23 +231,30 @@ function DetailPanel({
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">파일럿 배정</p>
             <div
-              className="flex items-center justify-between rounded-xl px-4 py-2.5"
+              className="rounded-xl px-4 py-3"
               style={{
                 background: booking.pilots ? "#F0FDF4" : "#FFFBEB",
                 border: `1px solid ${booking.pilots ? "#BBF7D0" : "#FDE68A"}`,
               }}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mb-2">
                 <Plane className="w-4 h-4" style={{ color: booking.pilots ? "#059669" : "#D97706" }} />
-                <span className="text-xs text-gray-500">담당 파일럿</span>
-              </div>
-              {booking.pilots ? (
-                <span className="text-sm font-semibold" style={{ color: "#065F46" }}>
-                  {booking.pilots.name}
+                <span className="text-xs font-medium" style={{ color: booking.pilots ? "#065F46" : "#92400E" }}>
+                  {booking.pilots ? `${booking.pilots.name} 배정됨` : "미배정"}
                 </span>
-              ) : (
-                <span className="text-xs font-medium text-amber-600">미배정</span>
-              )}
+              </div>
+              <select
+                disabled={assigning}
+                value={booking.pilot_id ?? ""}
+                onChange={(e) => handlePilotSelect(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white text-gray-800 focus:outline-none focus:border-blue-400 disabled:opacity-60"
+              >
+                <option value="">— 파일럿 선택 —</option>
+                {pilots.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              {assigning && <p className="text-xs text-gray-400 mt-1">배정 중...</p>}
             </div>
           </div>
 
@@ -319,7 +347,7 @@ function DetailPanel({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function BookingsPage() {
-  const [dateTab, setDateTab]         = useState<string>("today");
+  const [dateTab, setDateTab]         = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<BookingStatus | "all">("all");
   const [search, setSearch]           = useState("");
   const [bookings, setBookings]       = useState<ApiBooking[]>([]);
@@ -366,6 +394,20 @@ export default function BookingsPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      setBookings((prev) => prev.map((b) => (b.id === id ? updated : b)));
+      setSelectedBooking((prev) => (prev?.id === id ? updated : prev));
+    }
+  };
+
+  // ── 파일럿 배정 ──────────────────────────────────────────────────
+  const handlePilotChange = async (id: string, pilotId: string | null) => {
+    const res = await fetch(`/api/bookings/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pilot_id: pilotId }),
     });
     if (res.ok) {
       const updated = await res.json();
@@ -604,6 +646,7 @@ export default function BookingsPage() {
           booking={selectedBooking}
           onClose={() => setSelectedBooking(null)}
           onStatusChange={handleStatusChange}
+          onPilotChange={handlePilotChange}
         />
       )}
     </>

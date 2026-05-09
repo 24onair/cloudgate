@@ -51,6 +51,10 @@ interface Template {
 }
 
 // ── 목업 데이터 ─────────────────────────────────────────────────
+// TODO: API — INITIAL_LOGS 목업 → GET /api/notifications/logs (query: ?channel=&status=)
+// TODO: API — TEMPLATES 목업 → GET /api/notifications/templates
+// TODO: API — 알림 발송 → POST /api/notifications/send { templateId, recipients, variables }
+// TODO: API — 재시도 → POST /api/notifications/:id/retry
 const INITIAL_LOGS: NotificationLog[] = [
   { id: "n01", channel: "kakao", recipient: "이수진",   recipientType: "customer", templateName: "착륙완료 알림",   preview: "[구름상회] 비행이 안전하게 완료되었습니다. 이용해 주셔서 감사합니다.", status: "read",    sentAt: "10:21", readAt: "10:22", retryCount: 0 },
   { id: "n02", channel: "kakao", recipient: "최현우",   recipientType: "customer", templateName: "착륙완료 알림",   preview: "[구름상회] 비행이 안전하게 완료되었습니다. 이용해 주셔서 감사합니다.", status: "read",    sentAt: "11:26", readAt: "11:30", retryCount: 0 },

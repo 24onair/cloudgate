@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Wind,
@@ -25,58 +25,56 @@ import {
 } from "@/lib/slotStore";
 import { usePageContent } from "@/lib/pageContentStore";
 
-// ── 상수 ─────────────────────────────────────────────────────────
-// TODO: API — PRODUCTS 목업 → GET /api/products (active=true 필터)
-// TODO: API — OPTIONS 목업 → GET /api/product-options (active=true 필터)
-// TODO: API — handleSubmit → POST /api/bookings { productId, options, date, time, name, phone, headcount }
-const PRODUCTS = [
-  {
-    id: "basic",
-    name: "베이직",
-    subtitle: "첫 패러글라이딩 입문",
-    price: 75000,
-    duration: "약 10분",
-    color: "#4d4f46",
-    features: ["탠덤 비행", "안전 교육", "기념 스티커"],
-  },
-  {
-    id: "extreme",
-    name: "익스트림",
-    subtitle: "스릴 넘치는 고고도 비행",
-    price: 120000,
-    duration: "약 20분",
-    color: "#23251d",
-    features: ["고고도 탠덤 비행", "스릴 기동", "안전 교육"],
-    popular: true,
-  },
-  {
-    id: "vip",
-    name: "VIP",
-    subtitle: "프리미엄 풀 패키지",
-    price: 180000,
-    duration: "약 30분",
-    color: "#F54E00",
-    features: ["파노라마 코스", "VIP 라운지", "사진+영상 포함"],
-  },
-];
+// ── 타입 ─────────────────────────────────────────────────────────
+interface DbProduct {
+  id: string;
+  slug: string;
+  name: string;
+  subtitle: string | null;
+  price: number;
+  duration_min: number | null;
+  features: string[] | null;
+  badge: string | null;
+  is_featured: boolean;
+  sort_order: number;
+}
+interface DbOption {
+  id: string;
+  product_id: string;
+  name: string;
+  price: number;
+}
 
-const OPTIONS = [
-  { id: "photo", label: "사진 패키지", desc: "고프로 사진 30장", price: 30000, icon: Camera, forProducts: ["basic", "extreme"] },
-  { id: "video", label: "영상 촬영", desc: "고프로 영상 편집본", price: 20000, icon: Video, forProducts: ["basic", "extreme"] },
-];
-
-
-const TODAY = "2026-05-02";
-const MAY_START_DOW = 5;
-const DAYS_IN_MAY = 31;
-const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
-
-function dateStr(day: number) {
-  return `2026-05-${String(day).padStart(2, "0")}`;
+// ── 헬퍼 ─────────────────────────────────────────────────────────
+const PRODUCT_COLORS: Record<string, string> = {
+  basic:   "#4d4f46",
+  extreme: "#23251d",
+  vip:     "#F54E00",
+};
+function productColor(slug: string) {
+  return PRODUCT_COLORS[slug] ?? "#4d4f46";
+}
+function formatDuration(min: number | null) {
+  return min ? `약 ${min}분` : "";
+}
+function getOptionIcon(name: string) {
+  if (/사진|포토|photo/i.test(name)) return Camera;
+  if (/영상|비디오|video/i.test(name)) return Video;
+  return Camera;
 }
 function formatPrice(n: number) {
   return n.toLocaleString("ko-KR") + "원";
 }
+
+// ── 날짜 유틸 ─────────────────────────────────────────────────────
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+function makeDateStr(year: number, month: number, day: number) {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
 // ── 스텝 인디케이터 ───────────────────────────────────────────────
 function StepIndicator({ current }: { current: number }) {
@@ -85,7 +83,7 @@ function StepIndicator({ current }: { current: number }) {
     <div className="flex items-center gap-0">
       {steps.map((label, i) => {
         const idx = i + 1;
-        const done = idx < current;
+        const done   = idx < current;
         const active = idx === current;
         return (
           <div key={label} className="flex items-center">
@@ -121,49 +119,109 @@ function StepIndicator({ current }: { current: number }) {
 
 // ── 메인 (inner) ──────────────────────────────────────────────────
 function BookingInner() {
-  const router = useRouter();
+  const router       = useRouter();
   const searchParams = useSearchParams();
-  const initProduct = searchParams.get("product") ?? "";
+  const initProduct  = searchParams.get("product") ?? "";
 
   // ── 파일럿 스케줄 & 슬롯 설정 ──────────────────────────────────
-  const schedules  = useSchedules();
-  const slotCfg    = useSlotConfig();
-  const timeSlots  = generateSlotTimes(slotCfg);
-  const content    = usePageContent();
+  const schedules = useSchedules();
+  const slotCfg   = useSlotConfig();
+  const timeSlots = generateSlotTimes(slotCfg);
+  const content   = usePageContent();
 
-  const [step, setStep] = useState(1);
-  const [selectedDate, setSelectedDate] = useState("");
-  const [selectedTime, setSelectedTime] = useState("");
-  const [selectedProduct, setSelectedProduct] = useState(initProduct);
-  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
-  const [headcount, setHeadcount] = useState(1);
+  // ── 상품/옵션 (DB) ─────────────────────────────────────────────
+  const [products, setProducts] = useState<DbProduct[]>([]);
+  const [options,  setOptions]  = useState<DbOption[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
 
-  // 선택 날짜 기준 가용 파일럿 수 (= 최대 예약 인원)
+  const fetchProducts = useCallback(async () => {
+    setLoadingProducts(true);
+    try {
+      const [pRes, oRes] = await Promise.all([
+        fetch("/api/products"),
+        fetch("/api/product-options"),
+      ]);
+      if (pRes.ok) setProducts(await pRes.json());
+      if (oRes.ok) setOptions(await oRes.json());
+    } finally {
+      setLoadingProducts(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchProducts(); }, [fetchProducts]);
+
+  // ── 날씨 등급 ─────────────────────────────────────────────────
+  type WeatherGrade = "GREEN" | "YELLOW" | "RED";
+  const [weatherGrade, setWeatherGrade] = useState<WeatherGrade | null>(null);
+
+  useEffect(() => {
+    fetch("/api/weather")
+      .then((r) => r.json())
+      .then((data: { current?: { wind?: number; precipType?: number } }) => {
+        const wind  = data?.current?.wind  ?? 0;
+        const precip = data?.current?.precipType ?? 0;
+        if (precip > 0 || wind >= 7) setWeatherGrade("RED");
+        else if (wind >= 5)           setWeatherGrade("YELLOW");
+        else                           setWeatherGrade("GREEN");
+      })
+      .catch(() => setWeatherGrade("GREEN"));
+  }, []);
+
+  // ── 달력 상태 (동적) ──────────────────────────────────────────
+  const TODAY = todayStr();
+  const [calYear,  setCalYear]  = useState(() => Number(TODAY.slice(0, 4)));
+  const [calMonth, setCalMonth] = useState(() => Number(TODAY.slice(5, 7)));
+
+  function goCalMonth(delta: number) {
+    const d = new Date(calYear, calMonth - 1 + delta, 1);
+    setCalYear(d.getFullYear());
+    setCalMonth(d.getMonth() + 1);
+  }
+
+  const calFirstDow   = new Date(calYear, calMonth - 1, 1).getDay(); // 0=일
+  const calDaysInMonth = new Date(calYear, calMonth, 0).getDate();
+
+  // 이전 달로 돌아갈 수 있는지 (오늘이 속한 달보다 앞으로는 못 감)
+  const todayYear  = Number(TODAY.slice(0, 4));
+  const todayMonth = Number(TODAY.slice(5, 7));
+  const canGoPrev  = calYear > todayYear || (calYear === todayYear && calMonth > todayMonth);
+
+  // ── 예약 상태 ─────────────────────────────────────────────────
+  const [step,            setStep]            = useState(1);
+  const [selectedDate,    setSelectedDate]    = useState("");
+  const [selectedTime,    setSelectedTime]    = useState("");
+  const [selectedProduct, setSelectedProduct] = useState(initProduct); // slug
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);  // option UUIDs
+  const [headcount,       setHeadcount]       = useState(1);
+
   const availablePilots = selectedDate ? _countPilots(selectedDate, schedules) : 0;
-  const maxHeadcount = Math.max(1, availablePilots);
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [requests, setRequests] = useState("");
-  const [agreed, setAgreed] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [bookingNo, setBookingNo] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const maxHeadcount    = Math.max(1, availablePilots);
+
+  const [name,        setName]        = useState("");
+  const [phone,       setPhone]       = useState("");
+  const [requests,    setRequests]    = useState("");
+  const [agreed,      setAgreed]      = useState(false);
+  const [submitted,   setSubmitted]   = useState(false);
+  const [bookingNo,   setBookingNo]   = useState("");
+  const [submitting,  setSubmitting]  = useState(false);
   const [submitError, setSubmitError] = useState("");
 
-  const product = PRODUCTS.find((p) => p.id === selectedProduct);
-  const optionTotal = selectedOptions.reduce((s, oid) => {
-    const opt = OPTIONS.find((o) => o.id === oid);
+  // 현재 선택된 상품 객체
+  const product      = products.find((p) => p.slug === selectedProduct);
+  const productOpts  = options.filter((o) => o.product_id === product?.id);
+  // VIP 등 no-option 상품: options에 항목이 없으면 옵션 없음으로 처리
+
+  const optionTotal   = selectedOptions.reduce((s, oid) => {
+    const opt = options.find((o) => o.id === oid);
     return s + (opt?.price ?? 0);
   }, 0);
-  const productTotal = (product?.price ?? 0) * headcount + optionTotal;
-  const deposit = headcount * 10000;   // 1인당 10,000원
-  const remaining = productTotal - deposit;
+  const productTotal  = (product?.price ?? 0) * headcount + optionTotal;
+  const deposit       = headcount * 10000;   // 1인당 10,000원
+  const remaining     = productTotal - deposit;
 
-  // 날짜 바뀌면 headcount가 새 max를 초과하지 않도록 보정
+  // 날짜 바뀌면 headcount 보정
   useEffect(() => {
-    if (availablePilots > 0 && headcount > availablePilots) {
-      setHeadcount(availablePilots);
-    }
+    if (availablePilots > 0 && headcount > availablePilots) setHeadcount(availablePilots);
   }, [availablePilots]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const canNext1 = selectedDate && selectedTime;
@@ -183,10 +241,53 @@ function BookingInner() {
         <h2 className="text-lg font-bold mb-1" style={{ color: "#23251d" }}>날짜를 선택해 주세요</h2>
       </div>
 
+      {/* 날씨 상태 배너 */}
+      {weatherGrade === "RED" && (
+        <div className="rounded-2xl px-4 py-3 flex items-start gap-3"
+          style={{ backgroundColor: "#FEF2F2", border: "1.5px solid #FECACA" }}>
+          <Wind className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: "#DC2626" }} />
+          <div>
+            <p className="font-bold text-sm" style={{ color: "#DC2626" }}>현재 기상 상황 불량 — 예약 일시 중단</p>
+            <p className="text-xs mt-0.5" style={{ color: "#EF4444" }}>
+              강풍 또는 강수 등으로 비행이 어렵습니다. 날씨가 호전되면 예약이 재개됩니다.
+            </p>
+          </div>
+        </div>
+      )}
+      {weatherGrade === "YELLOW" && (
+        <div className="rounded-2xl px-4 py-3 flex items-start gap-3"
+          style={{ backgroundColor: "#FFFBEB", border: "1.5px solid #FCD34D" }}>
+          <Wind className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: "#D97706" }} />
+          <div>
+            <p className="font-bold text-sm" style={{ color: "#D97706" }}>현재 바람이 다소 강합니다</p>
+            <p className="text-xs mt-0.5" style={{ color: "#92400E" }}>
+              기상 상황에 따라 당일 운항이 변경될 수 있습니다. 예약 전 확인해 주세요.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 달력 */}
       <div className="rounded-2xl p-4 border" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
         <div className="flex items-center justify-between mb-4">
-          <p className="font-bold" style={{ color: "#23251d" }}>2026년 5월</p>
+          <button
+            onClick={() => goCalMonth(-1)}
+            disabled={!canGoPrev}
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-30"
+            style={{ backgroundColor: "#e5e7e0" }}
+          >
+            <ChevronLeft className="w-4 h-4" style={{ color: "#4d4f46" }} />
+          </button>
+          <p className="font-bold" style={{ color: "#23251d" }}>
+            {calYear}년 {calMonth}월
+          </p>
+          <button
+            onClick={() => goCalMonth(1)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+            style={{ backgroundColor: "#e5e7e0" }}
+          >
+            <ChevronRight className="w-4 h-4" style={{ color: "#4d4f46" }} />
+          </button>
         </div>
         <div className="grid grid-cols-7 mb-2">
           {DAY_LABELS.map((d, i) => (
@@ -197,16 +298,17 @@ function BookingInner() {
           ))}
         </div>
         <div className="grid grid-cols-7 gap-1">
-          {Array.from({ length: MAY_START_DOW }).map((_, i) => <div key={`e${i}`} />)}
-          {Array.from({ length: DAYS_IN_MAY }, (_, i) => {
-            const date = dateStr(i + 1);
-            const day = i + 1;
-            const dow = (MAY_START_DOW + i) % 7;
-            const isPast = date <= TODAY;
-            const pilotCount = _countPilots(date, schedules);
-            const noFlight = !isPast && pilotCount === 0;
-            const isDisabled = isPast || noFlight;
-            const isSelected = date === selectedDate;
+          {Array.from({ length: calFirstDow }).map((_, i) => <div key={`e${i}`} />)}
+          {Array.from({ length: calDaysInMonth }, (_, i) => {
+            const day  = i + 1;
+            const date = makeDateStr(calYear, calMonth, day);
+            const dow  = (calFirstDow + i) % 7;
+            const isPast      = date <= TODAY;
+            const pilotCount  = _countPilots(date, schedules);
+            const noFlight    = !isPast && pilotCount === 0;
+            const weatherRed  = weatherGrade === "RED";
+            const isDisabled  = isPast || noFlight || weatherRed;
+            const isSelected  = date === selectedDate;
 
             return (
               <button
@@ -260,9 +362,9 @@ function BookingInner() {
                 onClick={() => setSelectedTime(t)}
                 className="py-3 rounded-xl text-sm font-medium border-2 transition-all"
                 style={{
-                  borderColor: selectedTime === t ? "#23251d" : "#bfc1b7",
+                  borderColor:     selectedTime === t ? "#23251d" : "#bfc1b7",
                   backgroundColor: selectedTime === t ? "#23251d" : "#fdfdf8",
-                  color: selectedTime === t ? "white" : "#4d4f46",
+                  color:           selectedTime === t ? "white"   : "#4d4f46",
                 }}
               >
                 {t}
@@ -279,52 +381,71 @@ function BookingInner() {
     <div className="space-y-5">
       <h2 className="text-lg font-bold" style={{ color: "#23251d" }}>상품을 선택해 주세요</h2>
 
-      <div className="space-y-3">
-        {PRODUCTS.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => {
-              setSelectedProduct(p.id);
-              setSelectedOptions([]);
-            }}
-            className="w-full text-left rounded-2xl p-5 border-2 transition-all"
-            style={{
-              borderColor: selectedProduct === p.id ? p.color : "#bfc1b7",
-              backgroundColor: selectedProduct === p.id ? `${p.color}0d` : "#fdfdf8",
-            }}
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-bold text-base" style={{ color: "#23251d" }}>{p.name}</span>
-                  {"popular" in p && p.popular && (
-                    <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white" style={{ backgroundColor: "#F54E00" }}>
-                      인기
-                    </span>
-                  )}
+      {loadingProducts ? (
+        <div className="py-12 flex justify-center">
+          <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: "#4d4f46 transparent #4d4f46 #4d4f46" }} />
+        </div>
+      ) : products.length === 0 ? (
+        <div className="py-12 text-center text-sm" style={{ color: "#9ea096" }}>
+          현재 예약 가능한 상품이 없습니다.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {products.map((p) => {
+            const color    = productColor(p.slug);
+            const isSelect = selectedProduct === p.slug;
+            return (
+              <button
+                key={p.id}
+                onClick={() => {
+                  setSelectedProduct(p.slug);
+                  setSelectedOptions([]);
+                }}
+                className="w-full text-left rounded-2xl p-5 border-2 transition-all"
+                style={{
+                  borderColor:     isSelect ? color : "#bfc1b7",
+                  backgroundColor: isSelect ? `${color}0d` : "#fdfdf8",
+                }}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-bold text-base" style={{ color: "#23251d" }}>{p.name}</span>
+                      {p.badge && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-bold text-white"
+                          style={{ backgroundColor: "#F54E00" }}>
+                          {p.badge}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs mb-2" style={{ color: "#65675e" }}>{p.subtitle}</p>
+                    {p.duration_min && (
+                      <div className="flex items-center gap-3 text-xs" style={{ color: "#9ea096" }}>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />{formatDuration(p.duration_min)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-right flex-shrink-0 ml-4">
+                    <p className="text-xl font-black" style={{ color }}>{formatPrice(p.price)}</p>
+                    <p className="text-xs" style={{ color: "#9ea096" }}>1인 기준</p>
+                    <div
+                      className="w-5 h-5 rounded-full border-2 mt-2 ml-auto flex items-center justify-center"
+                      style={{
+                        borderColor:     isSelect ? color : "#bfc1b7",
+                        backgroundColor: isSelect ? color : "#fdfdf8",
+                      }}
+                    >
+                      {isSelect && <Check className="w-3 h-3 text-white" />}
+                    </div>
+                  </div>
                 </div>
-                <p className="text-xs mb-2" style={{ color: "#65675e" }}>{p.subtitle}</p>
-                <div className="flex items-center gap-3 text-xs" style={{ color: "#9ea096" }}>
-                  <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{p.duration}</span>
-                </div>
-              </div>
-              <div className="text-right flex-shrink-0 ml-4">
-                <p className="text-xl font-black" style={{ color: p.color }}>{formatPrice(p.price)}</p>
-                <p className="text-xs" style={{ color: "#9ea096" }}>1인 기준</p>
-                <div
-                  className="w-5 h-5 rounded-full border-2 mt-2 ml-auto flex items-center justify-center"
-                  style={{
-                    borderColor: selectedProduct === p.id ? p.color : "#bfc1b7",
-                    backgroundColor: selectedProduct === p.id ? p.color : "#fdfdf8",
-                  }}
-                >
-                  {selectedProduct === p.id && <Check className="w-3 h-3 text-white" />}
-                </div>
-              </div>
-            </div>
-          </button>
-        ))}
-      </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* 인원 */}
       <div className="rounded-2xl p-5 border" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
@@ -354,8 +475,8 @@ function BookingInner() {
             className="w-10 h-10 rounded-xl border-2 flex items-center justify-center font-bold transition-all"
             style={{
               borderColor: headcount >= maxHeadcount ? "#e5e7eb" : "#bfc1b7",
-              color: headcount >= maxHeadcount ? "#d1d5db" : "#4d4f46",
-              cursor: headcount >= maxHeadcount ? "not-allowed" : "pointer",
+              color:       headcount >= maxHeadcount ? "#d1d5db" : "#4d4f46",
+              cursor:      headcount >= maxHeadcount ? "not-allowed" : "pointer",
             }}
           >
             +
@@ -369,15 +490,17 @@ function BookingInner() {
       </div>
 
       {/* 옵션 */}
-      {selectedProduct && (
+      {selectedProduct && product && (
         <div className="rounded-2xl p-5 border" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
           <p className="text-sm font-semibold mb-3" style={{ color: "#23251d" }}>추가 옵션 (선택)</p>
-          {selectedProduct === "vip" ? (
-            <p className="text-sm" style={{ color: "#65675e" }}>VIP 상품에는 사진+영상 풀 패키지가 포함되어 있습니다.</p>
+          {productOpts.length === 0 ? (
+            <p className="text-sm" style={{ color: "#65675e" }}>
+              {product.name} 상품에는 별도 추가 옵션이 없습니다.
+            </p>
           ) : (
             <div className="space-y-2">
-              {OPTIONS.filter((o) => o.forProducts.includes(selectedProduct)).map((opt) => {
-                const Icon = opt.icon;
+              {productOpts.map((opt) => {
+                const Icon       = getOptionIcon(opt.name);
                 const isSelected = selectedOptions.includes(opt.id);
                 return (
                   <button
@@ -385,18 +508,20 @@ function BookingInner() {
                     onClick={() => toggleOption(opt.id)}
                     className="w-full flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all text-left"
                     style={{
-                      borderColor: isSelected ? "#23251d" : "#bfc1b7",
+                      borderColor:     isSelected ? "#23251d" : "#bfc1b7",
                       backgroundColor: isSelected ? "#eeefe9" : "#fdfdf8",
                     }}
                   >
-                    <Icon className="w-4 h-4 flex-shrink-0" style={{ color: isSelected ? "#23251d" : "#9ea096" }} />
+                    <Icon className="w-4 h-4 flex-shrink-0"
+                      style={{ color: isSelected ? "#23251d" : "#9ea096" }} />
                     <div className="flex-1">
-                      <p className="text-sm font-medium" style={{ color: isSelected ? "#23251d" : "#4d4f46" }}>
-                        {opt.label}
+                      <p className="text-sm font-medium"
+                        style={{ color: isSelected ? "#23251d" : "#4d4f46" }}>
+                        {opt.name}
                       </p>
-                      <p className="text-xs" style={{ color: "#9ea096" }}>{opt.desc}</p>
                     </div>
-                    <p className="text-sm font-bold" style={{ color: isSelected ? "#23251d" : "#4d4f46" }}>
+                    <p className="text-sm font-bold"
+                      style={{ color: isSelected ? "#23251d" : "#4d4f46" }}>
                       +{formatPrice(opt.price)}
                     </p>
                   </button>
@@ -415,16 +540,17 @@ function BookingInner() {
             <span>{formatPrice(product.price * headcount)}</span>
           </div>
           {selectedOptions.map((oid) => {
-            const opt = OPTIONS.find((o) => o.id === oid);
+            const opt = options.find((o) => o.id === oid);
             if (!opt) return null;
             return (
               <div key={oid} className="flex justify-between text-sm mb-1" style={{ color: "#65675e" }}>
-                <span>{opt.label}</span>
+                <span>{opt.name}</span>
                 <span>+{formatPrice(opt.price)}</span>
               </div>
             );
           })}
-          <div className="border-t mt-2 pt-2 flex justify-between font-bold" style={{ borderColor: "#bfc1b7", color: "#23251d" }}>
+          <div className="border-t mt-2 pt-2 flex justify-between font-bold"
+            style={{ borderColor: "#bfc1b7", color: "#23251d" }}>
             <span>합계</span>
             <span>{formatPrice(productTotal)}</span>
           </div>
@@ -438,12 +564,14 @@ function BookingInner() {
     <div className="space-y-5">
       <h2 className="text-lg font-bold" style={{ color: "#23251d" }}>예약자 정보를 입력해 주세요</h2>
 
-      <div className="rounded-2xl p-5 border space-y-4" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
+      <div className="rounded-2xl p-5 border space-y-4"
+        style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
         <div>
           <label className="block text-sm font-medium mb-1.5" style={{ color: "#4d4f46" }}>
             이름 <span className="text-red-500">*</span>
           </label>
-          <div className="flex items-center gap-3 border rounded-xl px-4 py-3 focus-within:border-[#23251d] transition-colors" style={{ borderColor: "#bfc1b7" }}>
+          <div className="flex items-center gap-3 border rounded-xl px-4 py-3 focus-within:border-[#23251d] transition-colors"
+            style={{ borderColor: "#bfc1b7" }}>
             <User className="w-4 h-4 flex-shrink-0" style={{ color: "#9ea096" }} />
             <input
               type="text"
@@ -459,15 +587,16 @@ function BookingInner() {
           <label className="block text-sm font-medium mb-1.5" style={{ color: "#4d4f46" }}>
             연락처 <span className="text-red-500">*</span>
           </label>
-          <div className="flex items-center gap-3 border rounded-xl px-4 py-3 focus-within:border-[#23251d] transition-colors" style={{ borderColor: "#bfc1b7" }}>
+          <div className="flex items-center gap-3 border rounded-xl px-4 py-3 focus-within:border-[#23251d] transition-colors"
+            style={{ borderColor: "#bfc1b7" }}>
             <Phone className="w-4 h-4 flex-shrink-0" style={{ color: "#9ea096" }} />
             <input
               type="tel"
               placeholder="010-0000-0000"
               value={phone}
               onChange={(e) => {
-                const digits = e.target.value.replace(/\D/g, "").slice(0, 11);
-                let formatted = digits;
+                const digits    = e.target.value.replace(/\D/g, "").slice(0, 11);
+                let   formatted = digits;
                 if (digits.length > 3 && digits.length <= 7) {
                   formatted = `${digits.slice(0, 3)}-${digits.slice(3)}`;
                 } else if (digits.length > 7) {
@@ -515,7 +644,7 @@ function BookingInner() {
             onClick={() => setAgreed(!agreed)}
             className="w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all"
             style={{
-              borderColor: agreed ? "#23251d" : "#bfc1b7",
+              borderColor:     agreed ? "#23251d" : "#bfc1b7",
               backgroundColor: agreed ? "#23251d" : "#fdfdf8",
             }}
           >
@@ -532,17 +661,18 @@ function BookingInner() {
       <div className="rounded-2xl p-4 border" style={{ backgroundColor: "#eeefe9", borderColor: "#bfc1b7" }}>
         <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#9ea096" }}>예약 요약</p>
         {[
-          { label: "날짜·시간", value: `${selectedDate.slice(5).replace("-", "월 ")}일 ${selectedTime}` },
-          { label: "상품", value: `${product?.name} × ${headcount}인` },
+          { label: "날짜·시간",                        value: `${selectedDate.slice(5).replace("-", "월 ")}일 ${selectedTime}` },
+          { label: "상품",                             value: `${product?.name} × ${headcount}인` },
           { label: `예약금 (${headcount}인 × 10,000원)`, value: formatPrice(deposit) },
-          { label: "현장 결제", value: formatPrice(remaining) },
+          { label: "현장 결제",                        value: formatPrice(remaining) },
         ].map((row) => (
           <div key={row.label} className="flex justify-between text-sm mb-1.5">
             <span style={{ color: "#65675e" }}>{row.label}</span>
             <span className="font-medium" style={{ color: "#23251d" }}>{row.value}</span>
           </div>
         ))}
-        <div className="border-t mt-2 pt-2 flex justify-between font-bold text-base" style={{ borderColor: "#bfc1b7", color: "#23251d" }}>
+        <div className="border-t mt-2 pt-2 flex justify-between font-bold text-base"
+          style={{ borderColor: "#bfc1b7", color: "#23251d" }}>
           <span>총 결제금액</span>
           <span>{formatPrice(productTotal)}</span>
         </div>
@@ -563,14 +693,16 @@ function BookingInner() {
       <p className="text-sm mb-6" style={{ color: "#65675e" }}>
         예약번호 <span className="font-bold" style={{ color: "#23251d" }}>{bookingNo}</span>
       </p>
-      <div className="w-full rounded-2xl p-5 border text-left mb-6" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
+      <div className="w-full rounded-2xl p-5 border text-left mb-6"
+        style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
         {[
-          { label: "예약자",   value: name },
-          { label: "연락처",   value: phone },
+          { label: "예약자",    value: name },
+          { label: "연락처",    value: phone },
           { label: "날짜·시간", value: `${selectedDate.slice(5).replace("-", "월 ")}일 ${selectedTime}` },
-          { label: "상품",     value: `${product?.name} × ${headcount}인` },
+          { label: "상품",      value: `${product?.name} × ${headcount}인` },
         ].map((row) => (
-          <div key={row.label} className="flex justify-between text-sm py-2 border-b" style={{ borderColor: "#e5e7e0" }}>
+          <div key={row.label} className="flex justify-between text-sm py-2 border-b"
+            style={{ borderColor: "#e5e7e0" }}>
             <span style={{ color: "#9ea096" }}>{row.label}</span>
             <span className="font-medium" style={{ color: "#23251d" }}>{row.value}</span>
           </div>
@@ -585,7 +717,8 @@ function BookingInner() {
             <span style={{ color: "#9ea096" }}>현장 결제 금액</span>
             <span className="font-medium" style={{ color: "#65675e" }}>{formatPrice(remaining)}</span>
           </div>
-          <div className="flex justify-between text-sm border-t pt-2 mt-1" style={{ borderColor: "#e5e7e0" }}>
+          <div className="flex justify-between text-sm border-t pt-2 mt-1"
+            style={{ borderColor: "#e5e7e0" }}>
             <span className="font-semibold" style={{ color: "#23251d" }}>총액</span>
             <span className="font-bold" style={{ color: "#23251d" }}>{formatPrice(productTotal)}</span>
           </div>
@@ -620,15 +753,22 @@ function BookingInner() {
   ) : (
     <div className="space-y-5">
       <h2 className="text-lg font-bold" style={{ color: "#23251d" }}>예약 내용을 확인해 주세요</h2>
-      <div className="rounded-2xl p-5 border space-y-3" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
+      <div className="rounded-2xl p-5 border space-y-3"
+        style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
         {[
-          { label: "예약자", value: name },
-          { label: "연락처", value: phone },
+          { label: "예약자",    value: name },
+          { label: "연락처",    value: phone },
           { label: "날짜·시간", value: `${selectedDate.slice(5).replace("-", "월 ")}일 ${selectedTime}` },
-          { label: "상품", value: `${product?.name} × ${headcount}인` },
-          { label: "추가 옵션", value: selectedOptions.length > 0 ? selectedOptions.map((oid) => OPTIONS.find((o) => o.id === oid)?.label).join(", ") : "없음" },
+          { label: "상품",      value: `${product?.name} × ${headcount}인` },
+          {
+            label: "추가 옵션",
+            value: selectedOptions.length > 0
+              ? selectedOptions.map((oid) => options.find((o) => o.id === oid)?.name).join(", ")
+              : "없음",
+          },
         ].map((row) => (
-          <div key={row.label} className="flex justify-between text-sm border-b pb-2 last:border-0 last:pb-0" style={{ borderColor: "#e5e7e0" }}>
+          <div key={row.label} className="flex justify-between text-sm border-b pb-2 last:border-0 last:pb-0"
+            style={{ borderColor: "#e5e7e0" }}>
             <span style={{ color: "#9ea096" }}>{row.label}</span>
             <span className="font-medium" style={{ color: "#23251d" }}>{row.value}</span>
           </div>
@@ -644,10 +784,10 @@ function BookingInner() {
             <span style={{ color: "#23251d" }}>{formatPrice((product?.price ?? 0) * headcount)}</span>
           </div>
           {selectedOptions.map((oid) => {
-            const opt = OPTIONS.find((o) => o.id === oid);
+            const opt = options.find((o) => o.id === oid);
             return opt ? (
               <div key={oid} className="flex justify-between">
-                <span style={{ color: "#65675e" }}>{opt.label}</span>
+                <span style={{ color: "#65675e" }}>{opt.name}</span>
                 <span style={{ color: "#23251d" }}>+{formatPrice(opt.price)}</span>
               </div>
             ) : null;
@@ -658,7 +798,7 @@ function BookingInner() {
               <span style={{ color: "#23251d" }}>{formatPrice(productTotal)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span style={{ color: "#9ea096" }}>지금 결제 (예약금 30%)</span>
+              <span style={{ color: "#9ea096" }}>지금 결제 (예약금)</span>
               <span className="font-bold" style={{ color: "#23251d" }}>{formatPrice(deposit)}</span>
             </div>
             <div className="flex justify-between text-sm">
@@ -678,9 +818,9 @@ function BookingInner() {
               key={method}
               className="flex-1 py-3 rounded-xl text-xs font-medium border-2 transition-all"
               style={{
-                borderColor: i === 0 ? "#23251d" : "#bfc1b7",
+                borderColor:     i === 0 ? "#23251d" : "#bfc1b7",
                 backgroundColor: i === 0 ? "#1e1f23" : "#fdfdf8",
-                color: i === 0 ? "white" : "#65675e",
+                color:           i === 0 ? "white"   : "#65675e",
               }}
             >
               {method}
@@ -756,59 +896,60 @@ function BookingInner() {
               </button>
             ) : (
               <>
-              {submitError && (
-                <p className="text-sm text-red-500 text-center mb-2">{submitError}</p>
-              )}
-              <button
-                disabled={submitting}
-                onClick={async () => {
-                  if (!product) return;
-                  setSubmitting(true);
-                  setSubmitError("");
-                  try {
-                    const opts = selectedOptions.map((oid) => {
-                      const o = OPTIONS.find((x) => x.id === oid);
-                      return o ? { name: o.label, price: o.price } : null;
-                    }).filter(Boolean);
+                {submitError && (
+                  <p className="text-sm text-red-500 text-center mb-2">{submitError}</p>
+                )}
+                <button
+                  disabled={submitting}
+                  onClick={async () => {
+                    if (!product) return;
+                    setSubmitting(true);
+                    setSubmitError("");
+                    try {
+                      const opts = selectedOptions.map((oid) => {
+                        const o = options.find((x) => x.id === oid);
+                        return o ? { name: o.name, price: o.price } : null;
+                      }).filter(Boolean);
 
-                    const res = await fetch("/api/bookings", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        customer_name:   name,
-                        customer_phone:  phone,
-                        product_name:    product.name,
-                        product_price:   product.price,
-                        headcount,
-                        flight_date:     selectedDate,
-                        flight_time:     selectedTime,
-                        options:         opts,
-                        total_price:     productTotal,
-                        deposit_amount:  deposit,
-                        balance_amount:  remaining,
-                        channel:         "online",
-                        memo:            requests || null,
-                      }),
-                    });
-                    if (!res.ok) {
-                      const err = await res.json();
-                      throw new Error(err.error ?? "예약 저장 실패");
+                      const res = await fetch("/api/bookings", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          customer_name:   name,
+                          customer_phone:  phone,
+                          product_id:      product.id,
+                          product_name:    product.name,
+                          product_price:   product.price,
+                          headcount,
+                          flight_date:     selectedDate,
+                          flight_time:     selectedTime,
+                          options:         opts,
+                          total_price:     productTotal,
+                          deposit_amount:  deposit,
+                          balance_amount:  remaining,
+                          channel:         "online",
+                          memo:            requests || null,
+                        }),
+                      });
+                      if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.error ?? "예약 저장 실패");
+                      }
+                      const data = await res.json();
+                      setBookingNo(data.booking_no);
+                      setSubmitted(true);
+                    } catch (e: unknown) {
+                      setSubmitError(e instanceof Error ? e.message : "오류가 발생했습니다. 다시 시도해 주세요.");
+                    } finally {
+                      setSubmitting(false);
                     }
-                    const data = await res.json();
-                    setBookingNo(data.booking_no);
-                    setSubmitted(true);
-                  } catch (e: unknown) {
-                    setSubmitError(e instanceof Error ? e.message : "오류가 발생했습니다. 다시 시도해 주세요.");
-                  } finally {
-                    setSubmitting(false);
-                  }
-                }}
-                className="w-full py-4 rounded-2xl font-bold text-white text-base transition-all flex items-center justify-center gap-2 disabled:opacity-60"
-                style={{ backgroundColor: "#F54E00" }}
-              >
-                <CreditCard className="w-5 h-5" />
-                {submitting ? "처리 중..." : `${formatPrice(deposit)} 예약금 결제하기`}
-              </button>
+                  }}
+                  className="w-full py-4 rounded-2xl font-bold text-white text-base transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                  style={{ backgroundColor: "#F54E00" }}
+                >
+                  <CreditCard className="w-5 h-5" />
+                  {submitting ? "처리 중..." : `${formatPrice(deposit)} 예약금 결제하기`}
+                </button>
               </>
             )}
           </div>

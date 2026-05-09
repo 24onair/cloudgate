@@ -23,6 +23,12 @@ export function monthlyAmount(item: FixedCostItem): number {
     : item.amount;
 }
 
+// TODO: API — 고정비 localStorage → API 교체
+// load()            → GET    /api/fixed-costs
+// addFixedCost()    → POST   /api/fixed-costs
+// updateFixedCost() → PATCH  /api/fixed-costs/:id
+// removeFixedCost() → DELETE /api/fixed-costs/:id
+
 const STORAGE_KEY = "gureum_fixed_costs";
 const EVENT_KEY   = "gureum_fixed_costs_update";
 

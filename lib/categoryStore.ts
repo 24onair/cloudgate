@@ -25,6 +25,12 @@ const DEFAULT_CATEGORIES: CostCategoryItem[] = [
   { id: "other",       label: "기타",        color: "#6B7280", active: true, isDefault: true },
 ];
 
+// TODO: API — 비용 카테고리 localStorage → API 교체
+// load()            → GET    /api/cost-categories
+// addCategory()     → POST   /api/cost-categories
+// updateCategory()  → PATCH  /api/cost-categories/:id
+// deleteCategory()  → DELETE /api/cost-categories/:id
+
 const STORAGE_KEY = "gureum_cost_categories";
 const EVENT_KEY   = "gureum_categories_update";
 

@@ -23,6 +23,13 @@ const DEFAULT_CFG: SettlementConfig = {
   defaultPilotShare: 60, // 파일럿 60% / 회사 40%
 };
 
+// TODO: API — 정산 설정 localStorage → API 교체
+// loadCfg()              → GET  /api/settlement/config
+// updateSettlementConfig → PATCH /api/settlement/config { defaultPilotShare }
+// loadOverrides()        → GET  /api/settlement/overrides
+// setPilotOverride()     → PUT  /api/settlement/overrides/:pilotId
+// removePilotOverride()  → DELETE /api/settlement/overrides/:pilotId
+
 // ── Config ────────────────────────────────────────────
 function loadCfg(): SettlementConfig {
   if (typeof window === "undefined") return DEFAULT_CFG;

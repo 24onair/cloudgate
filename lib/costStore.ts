@@ -20,6 +20,11 @@ export interface CostEntry {
   createdAt: string;
 }
 
+// TODO: API — 비용 항목 localStorage → API 교체
+// load()       → GET    /api/costs (query: ?date=YYYY-MM-DD)
+// addCost()    → POST   /api/costs
+// removeCost() → DELETE /api/costs/:id
+
 const STORAGE_KEY = "gureum_costs";
 const EVENT_KEY   = "gureum_costs_update";
 

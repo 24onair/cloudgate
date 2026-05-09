@@ -49,6 +49,8 @@ interface DayData {
 }
 
 // ── 목업 데이터 ─────────────────────────────────────────────────
+// TODO: API — DAILY_DATA 목업 → GET /api/finance/stats/daily (query: ?from=&to=)
+// TODO: API — MONTHLY_DATA 목업 → GET /api/finance/stats/monthly (query: ?year=)
 const DAILY_DATA: DayData[] = [
   { date: "2026-04-25", label: "4/25", revenue: 1200000, flights: 12, basic: 600000, extreme: 360000, vip: 240000, fuel: 80000, insurance: 30000, marketing: 20000, maintenance: 15000, salary: 180000, other: 10000 },
   { date: "2026-04-26", label: "4/26", revenue: 980000, flights: 10, basic: 500000, extreme: 280000, vip: 200000, fuel: 70000, insurance: 30000, marketing: 15000, maintenance: 10000, salary: 150000, other: 8000 },

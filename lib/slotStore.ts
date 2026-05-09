@@ -12,6 +12,12 @@ export interface SlotConfig {
 // date(YYYY-MM-DD) → [차단된 시간들("HH:mm")]
 export type BlockedSlots = Record<string, string[]>;
 
+// TODO: API — 슬롯 설정/차단 localStorage → API 교체
+// loadCfg()           → GET  /api/slots/config
+// updateSlotConfig()  → PATCH /api/slots/config { startTime, endTime, intervalMinutes }
+// loadBlocks()        → GET  /api/slots/blocked
+// toggleBlockedSlot() → PATCH /api/slots/blocked/:date { time, blocked: boolean }
+
 const CFG_KEY      = "gureum_slot_config";
 const BLOCK_KEY    = "gureum_blocked_slots";
 const EVENT_KEY    = "gureum_slots_update";

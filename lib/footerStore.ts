@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 export interface FooterConfig {
+  bizName: string;
   tagline: string;
   hoursWeekday: string;
   hoursWeekend: string;
@@ -18,6 +19,7 @@ const STORE_KEY = "gureum_footer";
 const EVENT_KEY = "gureum_footer_update";
 
 const DEFAULT: FooterConfig = {
+  bizName:      "단양 하늘체험 패러글라이딩",
   tagline:      "하늘을 가장 가까이서 만나는 곳.\n패러글라이딩 체험비행 전문 업체.",
   hoursWeekday: "평일 09:00 ~ 18:00",
   hoursWeekend: "주말 07:00 ~ 19:00",

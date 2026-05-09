@@ -16,6 +16,7 @@ export type AllSchedules = Record<string, ScheduleMap>;
 // pilotId → date → 기타 사유 (파일럿 직접 입력)
 export type AllScheduleNotes = Record<string, Record<string, string>>;
 
+// TODO: API — PILOTS_META 하드코딩 → GET /api/pilots (id, name, initials, avatarColor) 로 교체
 export const PILOTS_META: PilotMeta[] = [
   { id: "p1", name: "박구름", initials: "박", avatarColor: "#2A7AE2" },
   { id: "p2", name: "김하늘", initials: "김", avatarColor: "#10B981" },
@@ -105,6 +106,12 @@ function migrateSchedules(data: AllSchedules): AllSchedules {
   return result;
 }
 
+// TODO: API — 스케줄 load/save localStorage → API 교체
+// load()                 → GET  /api/schedules
+// save()                 → PATCH /api/schedules/:pilotId/:date
+// updatePilotSchedule()  → PATCH /api/schedules/:pilotId/:date { status }
+// updatePilotNote()      → PATCH /api/schedules/:pilotId/:date/note { note }
+
 function load(): AllSchedules {
   if (typeof window === "undefined") return DEFAULT_SCHEDULES;
   try {
@@ -117,6 +124,7 @@ function load(): AllSchedules {
 }
 
 function save(data: AllSchedules) {
+  // TODO: API — localStorage.setItem → API 호출로 교체
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   window.dispatchEvent(new Event(EVENT_KEY));
 }

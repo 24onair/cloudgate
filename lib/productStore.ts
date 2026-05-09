@@ -74,6 +74,13 @@ const DEFAULT_OPTIONS: ProductOption[] = [
   { id: "video", label: "영상 촬영", description: "고프로 영상 편집본", price: 20000, active: true },
 ];
 
+// TODO: API — 아래 load/save 함수들을 API 호출로 교체
+// loadProducts  → GET  /api/products
+// saveProducts  → POST /api/products (신규) / PATCH /api/products/:id (수정)
+// deleteProduct → DELETE /api/products/:id
+// loadOptions   → GET  /api/product-options
+// saveOptions   → POST /api/product-options / PATCH /api/product-options/:id
+
 function loadProducts(): Product[] {
   if (typeof window === "undefined") return DEFAULT_PRODUCTS;
   try {
@@ -85,6 +92,7 @@ function loadProducts(): Product[] {
 }
 
 function saveProducts(data: Product[]) {
+  // TODO: API — localStorage.setItem → API 호출로 교체
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   window.dispatchEvent(new Event(EVENT_KEY));
 }
@@ -100,6 +108,7 @@ function loadOptions(): ProductOption[] {
 }
 
 function saveOptions(data: ProductOption[]) {
+  // TODO: API — localStorage.setItem → API 호출로 교체
   localStorage.setItem(OPTIONS_KEY, JSON.stringify(data));
   window.dispatchEvent(new Event(EVENT_KEY));
 }

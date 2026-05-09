@@ -1559,9 +1559,17 @@ export default function PilotsPage() {
           onReactivate={() => reactivatePilot(selected.id)}
           onDelete={async () => {
             const id = selected.id;
+            const name = selected.name;
             setSelected(null);
+            // 낙관적 제거
             setPilots((prev) => prev.filter((p) => p.id !== id));
-            await fetch(`/api/pilots/${id}?hard=1`, { method: "DELETE" });
+            const res = await fetch(`/api/pilots/${id}?hard=1`, { method: "DELETE" });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              alert(`삭제 실패: ${err.error ?? "예약 배정 이력이 있는 파일럿은 삭제 대신 퇴직 처리를 사용하세요."}\n\n파일럿: ${name}`);
+            }
+            // 성공/실패 모두 DB 상태로 재동기화
+            await fetchPilots();
           }}
         />
       )}

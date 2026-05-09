@@ -36,7 +36,13 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     const hard = searchParams.get("hard") === "1";
 
     if (hard) {
-      // 완전 삭제 (테스트 파일럿 정리용)
+      // 연결된 예약의 pilot_id를 null로 해제 후 완전 삭제
+      await supabase
+        .from("bookings")
+        .update({ pilot_id: null })
+        .eq("pilot_id", id)
+        .eq("tenant_id", tenantId);
+
       const { error } = await supabase
         .from("pilots")
         .delete()

@@ -84,7 +84,21 @@ function avatarColorFromId(id: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
+/** 만료일 → status + daysLeft 계산 */
+function computeLicenseStatus(expiresAt: string): { status: LicenseStatus; daysLeft: number } {
+  const today = new Date();
+  const exp = new Date(expiresAt);
+  const daysLeft = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  let status: LicenseStatus;
+  if (daysLeft < 0)       status = "expired";
+  else if (daysLeft <= 7) status = "expiring_critical";
+  else if (daysLeft <= 30) status = "expiring_soon";
+  else                    status = "valid";
+  return { status, daysLeft };
+}
+
 function mapDbPilot(p: any): Pilot {
+  const rawLicenses: any[] = Array.isArray(p.licenses) ? p.licenses : [];
   return {
     id: p.id,
     name: p.name ?? "",
@@ -104,7 +118,10 @@ function mapDbPilot(p: any): Pilot {
     inactiveReason: p.inactive_reason as InactiveReason | undefined,
     inactiveNote: p.inactive_note ?? undefined,
     inactiveDate: p.inactive_date ?? undefined,
-    licenses: [],
+    licenses: rawLicenses.map((l) => {
+      const { status, daysLeft } = computeLicenseStatus(l.expiresAt ?? "");
+      return { id: l.id ?? String(Math.random()), name: l.name ?? "", number: l.number ?? "", issuedBy: l.issuedBy ?? "", expiresAt: l.expiresAt ?? "", status, daysLeft } as License;
+    }),
     schedule: {},
   };
 }
@@ -375,6 +392,41 @@ function DetailPanel({
   const [memo, setMemo] = useState(pilot.memo);
   const [showDeactivate, setShowDeactivate] = useState(false);
 
+  // 자격증 로컬 상태 (편집 후 DB 저장)
+  const [licenses, setLicenses] = useState<License[]>(pilot.licenses);
+  const [showAddLic, setShowAddLic] = useState(false);
+  const [newLic, setNewLic] = useState({ name: "", number: "", issuedBy: "", expiresAt: "" });
+
+  async function saveLicenses(updated: License[]) {
+    setLicenses(updated);
+    await fetch(`/api/pilots/${pilot.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ licenses: updated }),
+    });
+  }
+
+  function handleAddLicense() {
+    if (!newLic.name.trim() || !newLic.expiresAt) return;
+    const { status, daysLeft } = computeLicenseStatus(newLic.expiresAt);
+    const lic: License = {
+      id: Date.now().toString(),
+      name: newLic.name.trim(),
+      number: newLic.number.trim(),
+      issuedBy: newLic.issuedBy.trim(),
+      expiresAt: newLic.expiresAt,
+      status,
+      daysLeft,
+    };
+    saveLicenses([...licenses, lic]);
+    setNewLic({ name: "", number: "", issuedBy: "", expiresAt: "" });
+    setShowAddLic(false);
+  }
+
+  function handleDeleteLicense(id: string) {
+    saveLicenses(licenses.filter((l) => l.id !== id));
+  }
+
   // 스케줄은 공유 스토어에서 읽기/쓰기
   const allSchedules = useSchedules();
   const scheduleData: MonthSchedule = allSchedules[pilot.id] ?? pilot.schedule;
@@ -492,9 +544,8 @@ function DetailPanel({
           <section>
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">자격증 현황</h3>
             <div className="space-y-3">
-              {pilot.licenses.map((lic) => {
+              {licenses.map((lic) => {
                 const cfg = LICENSE_CFG[lic.status];
-                const Icon = cfg.icon;
                 return (
                   <div
                     key={lic.id}
@@ -506,11 +557,21 @@ function DetailPanel({
                   >
                     <div className="flex items-start justify-between mb-1">
                       <span className="text-sm font-medium" style={{ color: "#0D2B52" }}>{lic.name}</span>
-                      <LicenseBadge status={lic.status} />
+                      <div className="flex items-center gap-2">
+                        <LicenseBadge status={lic.status} />
+                        {editMode && (
+                          <button
+                            onClick={() => handleDeleteLicense(lic.id)}
+                            className="p-0.5 rounded hover:bg-red-100"
+                          >
+                            <X size={12} className="text-red-400" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="text-xs text-gray-500 space-y-0.5">
-                      <div>번호: {lic.number}</div>
-                      <div>발급: {lic.issuedBy}</div>
+                      {lic.number && <div>번호: {lic.number}</div>}
+                      {lic.issuedBy && <div>발급: {lic.issuedBy}</div>}
                       <div className="flex items-center gap-1">
                         만료:
                         <span style={{ color: cfg.color, fontWeight: 600 }}>
@@ -521,8 +582,69 @@ function DetailPanel({
                   </div>
                 );
               })}
-              {editMode && (
-                <button className="w-full border-2 border-dashed border-gray-200 rounded-xl py-3 text-sm text-gray-400 hover:border-blue-300 hover:text-blue-400 transition-colors flex items-center justify-center gap-1">
+
+              {/* 자격증 추가 폼 */}
+              {editMode && showAddLic && (
+                <div className="rounded-xl border-2 border-blue-200 p-4 space-y-2.5 bg-blue-50">
+                  <p className="text-xs font-semibold text-blue-500 mb-1">새 자격증</p>
+                  <input
+                    type="text"
+                    placeholder="자격증명 *"
+                    value={newLic.name}
+                    onChange={(e) => setNewLic((v) => ({ ...v, name: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-300"
+                    style={{ color: "#0D2B52" }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="자격증 번호"
+                    value={newLic.number}
+                    onChange={(e) => setNewLic((v) => ({ ...v, number: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-300"
+                    style={{ color: "#0D2B52" }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="발급기관"
+                    value={newLic.issuedBy}
+                    onChange={(e) => setNewLic((v) => ({ ...v, issuedBy: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-300"
+                    style={{ color: "#0D2B52" }}
+                  />
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">만료일 *</label>
+                    <input
+                      type="date"
+                      value={newLic.expiresAt}
+                      onChange={(e) => setNewLic((v) => ({ ...v, expiresAt: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-300"
+                      style={{ color: "#0D2B52" }}
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => { setShowAddLic(false); setNewLic({ name: "", number: "", issuedBy: "", expiresAt: "" }); }}
+                      className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-500 hover:bg-gray-50"
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={handleAddLicense}
+                      disabled={!newLic.name.trim() || !newLic.expiresAt}
+                      className="flex-1 py-2 rounded-lg text-sm text-white font-medium disabled:opacity-40"
+                      style={{ background: "#0D2B52" }}
+                    >
+                      추가
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {editMode && !showAddLic && (
+                <button
+                  onClick={() => setShowAddLic(true)}
+                  className="w-full border-2 border-dashed border-gray-200 rounded-xl py-3 text-sm text-gray-400 hover:border-blue-300 hover:text-blue-400 transition-colors flex items-center justify-center gap-1"
+                >
                   <Plus size={14} />
                   자격증 추가
                 </button>

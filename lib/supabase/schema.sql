@@ -30,8 +30,9 @@ create table if not exists pilots (
   phone            text,
   email            text,
   join_date        date,                       -- 입사일
-  license_no       text,                       -- 자격증 번호
-  license_expiry   date,                       -- 자격증 만료일
+  licenses         jsonb default '[]'::jsonb,  -- 자격증 배열 [{id,name,number,issuedBy,expiresAt}]
+  license_no       text,                       -- 레거시: 단일 자격증 번호 (사용 안함)
+  license_expiry   date,                       -- 레거시: 단일 만료일 (사용 안함)
   status           text default 'active'       -- active | inactive
     check (status in ('active', 'inactive')),
   rate_per_flight  integer default 30000,      -- 비행 1건당 정산 단가(원)

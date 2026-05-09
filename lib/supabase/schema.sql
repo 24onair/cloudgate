@@ -24,18 +24,25 @@ on conflict (slug) do nothing;
 
 -- ── 파일럿 ───────────────────────────────────────────────────
 create table if not exists pilots (
-  id              uuid primary key default uuid_generate_v4(),
-  tenant_id       uuid references tenants(id) on delete cascade,
-  name            text not null,
-  phone           text,
-  email           text,
-  license_no      text,                       -- 자격증 번호
-  license_expiry  date,                       -- 자격증 만료일
-  status          text default 'active'       -- active | inactive
+  id               uuid primary key default uuid_generate_v4(),
+  tenant_id        uuid references tenants(id) on delete cascade,
+  name             text not null,
+  phone            text,
+  email            text,
+  join_date        date,                       -- 입사일
+  license_no       text,                       -- 자격증 번호
+  license_expiry   date,                       -- 자격증 만료일
+  status           text default 'active'       -- active | inactive
     check (status in ('active', 'inactive')),
-  rate_per_flight integer default 30000,      -- 비행 1건당 정산 단가(원)
-  memo            text,
-  created_at      timestamptz default now()
+  rate_per_flight  integer default 30000,      -- 비행 1건당 정산 단가(원)
+  memo             text,
+  -- 퇴직/복직 관련
+  inactive_reason  text
+    check (inactive_reason in ('resignation','retirement','contract_end','other')),
+  inactive_note    text,
+  inactive_date    date,
+  created_at       timestamptz default now(),
+  updated_at       timestamptz default now()
 );
 
 -- ── 상품 ─────────────────────────────────────────────────────
@@ -213,6 +220,10 @@ $$ language plpgsql;
 
 create or replace trigger bookings_updated_at
   before update on bookings
+  for each row execute function update_updated_at();
+
+create or replace trigger pilots_updated_at
+  before update on pilots
   for each row execute function update_updated_at();
 
 -- ============================================================

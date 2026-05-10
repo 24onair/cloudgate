@@ -1172,7 +1172,7 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
     if (!phone.trim()) errs.phone = "전화번호를 입력해주세요.";
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setErrors({});
-    await fetch("/api/pilots", {
+    const res = await fetch("/api/pilots", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1185,6 +1185,11 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
         status: "active",
       }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setErrors({ name: data.error ?? "등록에 실패했습니다. 다시 시도해주세요." });
+      return;
+    }
     onSaved?.();
     onClose();
   }

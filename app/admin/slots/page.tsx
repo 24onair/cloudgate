@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Clock,
   ChevronLeft,
@@ -18,13 +18,27 @@ import {
   useBlockedSlots,
   toggleBlockedSlot,
   generateSlotTimes,
-  countAvailablePilots,
   type SlotConfig,
 } from "@/lib/slotStore";
-import { useSchedules, PILOTS_META, SCHEDULE_CFG, type ScheduleStatus } from "@/lib/scheduleStore";
+import { useSchedules, SCHEDULE_CFG, type ScheduleStatus } from "@/lib/scheduleStore";
 
 const TODAY_STR = fmtDate(new Date());
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+
+interface PilotMeta {
+  id: string;
+  name: string;
+  initials: string;
+  avatarColor: string;
+}
+
+const AVATAR_COLORS = ["#2A7AE2", "#10B981", "#FF8A00", "#8B5CF6", "#EF4444", "#F59E0B", "#06B6D4"];
+
+function avatarColorFromId(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffffff;
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
 
 function fmtDate(d: Date) {
   const y = d.getFullYear();
@@ -51,13 +65,32 @@ export default function AdminSlotsPage() {
   const [selectedDate, setSelectedDate] = useState(TODAY_STR);
   const [showSettings, setShowSettings] = useState(false);
   const [draftCfg, setDraftCfg] = useState<SlotConfig>(cfg);
+  const [pilots, setPilots] = useState<PilotMeta[]>([]);
+
+  useEffect(() => {
+    fetch("/api/pilots")
+      .then((r) => r.json())
+      .then((data: { id: string; name: string; status?: string }[]) => {
+        if (!Array.isArray(data)) return;
+        setPilots(
+          data
+            .filter((p) => p.status !== "inactive")
+            .map((p) => ({
+              id: p.id,
+              name: p.name ?? "",
+              initials: (p.name ?? "?")[0],
+              avatarColor: avatarColorFromId(p.id),
+            }))
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   const slotTimes = generateSlotTimes(cfg);
-  const availablePilots = countAvailablePilots(selectedDate, schedules);
   const blockedForDate = blocks[selectedDate] ?? [];
   const isPast = selectedDate < TODAY_STR;
 
-  // 7일 navigation 데이터
+  // 14일 navigation 데이터
   const today = parseDate(TODAY_STR);
   const dates: string[] = [];
   for (let i = -1; i < 13; i++) {
@@ -67,10 +100,18 @@ export default function AdminSlotsPage() {
   }
   const selectedIdx = dates.indexOf(selectedDate);
 
-  const workingPilots = PILOTS_META.filter((p) => {
+  function countRealPilots(date: string): number {
+    return pilots.filter((p) => {
+      const s = schedules[p.id]?.[date] as ScheduleStatus | undefined;
+      return s === "working" || s === "standby";
+    }).length;
+  }
+
+  const workingPilots = pilots.filter((p) => {
     const s = schedules[p.id]?.[selectedDate] as ScheduleStatus | undefined;
     return s === "working" || s === "standby";
   });
+  const availablePilots = workingPilots.length;
 
   function openSettings() {
     setDraftCfg(cfg);
@@ -156,7 +197,7 @@ export default function AdminSlotsPage() {
               const isToday = d === TODAY_STR;
               const isSelected = d === selectedDate;
               const isPastDate = d < TODAY_STR;
-              const pCount = countAvailablePilots(d, schedules);
+              const pCount = countRealPilots(d);
               return (
                 <button
                   key={d}

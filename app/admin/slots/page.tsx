@@ -23,7 +23,7 @@ import {
 } from "@/lib/slotStore";
 import { useSchedules, PILOTS_META, SCHEDULE_CFG, type ScheduleStatus } from "@/lib/scheduleStore";
 
-const TODAY_STR = "2026-05-03";
+const TODAY_STR = fmtDate(new Date());
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
 function fmtDate(d: Date) {

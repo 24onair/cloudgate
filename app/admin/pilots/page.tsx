@@ -383,16 +383,21 @@ function DetailPanel({
   onDeactivate,
   onReactivate,
   onDelete,
+  onUpdate,
 }: {
   pilot: Pilot;
   onClose: () => void;
   onDeactivate: (reason: InactiveReason, note: string) => void;
   onReactivate: () => void;
   onDelete: () => void;
+  onUpdate?: (patch: { name: string; phone: string; email: string | null }) => void;
 }) {
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [memo, setMemo] = useState(pilot.memo);
+  const [memo,  setMemo]  = useState(pilot.memo);
+  const [name,  setName]  = useState(pilot.name);
+  const [phone, setPhone] = useState(pilot.phone);
+  const [email, setEmail] = useState(pilot.email ?? "");
   const [showDeactivate, setShowDeactivate] = useState(false);
 
   // 상세 패널 달력 월 상태 (동적 현재 월 기준)
@@ -413,10 +418,16 @@ function DetailPanel({
     await fetch(`/api/pilots/${pilot.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ memo }),
+      body: JSON.stringify({
+        name: name.trim() || pilot.name,
+        phone: phone.trim() || pilot.phone,
+        email: email.trim() || null,
+        memo,
+      }),
     });
     setSaving(false);
     setEditMode(false);
+    onUpdate?.({ name: name.trim() || pilot.name, phone: phone.trim() || pilot.phone, email: email.trim() || null });
   }
 
   // 자격증 로컬 상태 (편집 후 DB 저장)
@@ -533,12 +544,40 @@ function DetailPanel({
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">기본 정보</h3>
             <div className="space-y-2">
               <div className="flex items-center gap-3 text-sm">
+                <span className="text-xs font-medium text-gray-400 w-4 flex-shrink-0" title="이름">이</span>
+                {editMode ? (
+                  <input
+                    className="flex-1 text-sm px-2.5 py-1.5 rounded-lg border border-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    value={name} onChange={(e) => setName(e.target.value)}
+                    placeholder="이름"
+                  />
+                ) : (
+                  <span style={{ color: "#0D2B52" }}>{name}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3 text-sm">
                 <Phone size={14} className="text-gray-400 flex-shrink-0" />
-                <span style={{ color: "#0D2B52" }}>{pilot.phone}</span>
+                {editMode ? (
+                  <input
+                    className="flex-1 text-sm px-2.5 py-1.5 rounded-lg border border-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    value={phone} onChange={(e) => setPhone(e.target.value)}
+                    placeholder="010-0000-0000"
+                  />
+                ) : (
+                  <span style={{ color: "#0D2B52" }}>{phone}</span>
+                )}
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <Mail size={14} className="text-gray-400 flex-shrink-0" />
-                <span style={{ color: "#0D2B52" }}>{pilot.email}</span>
+                {editMode ? (
+                  <input
+                    className="flex-1 text-sm px-2.5 py-1.5 rounded-lg border border-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    value={email} onChange={(e) => setEmail(e.target.value)}
+                    placeholder="이메일 (선택)"
+                  />
+                ) : (
+                  <span style={{ color: "#0D2B52" }}>{email || "—"}</span>
+                )}
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <Calendar size={14} className="text-gray-400 flex-shrink-0" />
@@ -1755,6 +1794,12 @@ export default function PilotsPage() {
             }
             // 성공/실패 모두 DB 상태로 재동기화
             await fetchPilots();
+          }}
+          onUpdate={(patch) => {
+            setPilots((prev) =>
+              prev.map((p) => p.id === selected.id ? { ...p, ...patch } : p)
+            );
+            setSelected((prev) => prev ? { ...prev, ...patch } : prev);
           }}
         />
       )}

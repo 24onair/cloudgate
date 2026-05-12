@@ -78,6 +78,13 @@ interface Pilot {
 
 // ── DB → UI 매핑 ─────────────────────────────────────────────────
 const AVATAR_COLORS = ["#2A7AE2", "#10B981", "#FF8A00", "#8B5CF6", "#EF4444", "#F59E0B", "#06B6D4"];
+
+function formatPhone(raw: string): string {
+  const d = raw.replace(/\D/g, "").slice(0, 11);
+  if (d.length > 7) return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+  if (d.length > 3) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  return d;
+}
 function avatarColorFromId(id: string): string {
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffffff;
@@ -560,7 +567,7 @@ function DetailPanel({
                 {editMode ? (
                   <input
                     className="flex-1 text-sm px-2.5 py-1.5 rounded-lg border border-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    value={phone} onChange={(e) => setPhone(e.target.value)}
+                    value={phone} onChange={(e) => setPhone(formatPhone(e.target.value))}
                     placeholder="010-0000-0000"
                   />
                 ) : (
@@ -1188,13 +1195,7 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
   const [reason, setReason] = useState("");
 
   // 전화번호 자동 포맷 (숫자만 입력 → 010-0000-0000)
-  function handlePhone(raw: string) {
-    const d = raw.replace(/\D/g, "").slice(0, 11);
-    let fmt = d;
-    if (d.length > 7)      fmt = `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
-    else if (d.length > 3) fmt = `${d.slice(0, 3)}-${d.slice(3)}`;
-    setPhone(fmt);
-  }
+  function handlePhone(raw: string) { setPhone(formatPhone(raw)); }
 
   // 사진 선택
   function handlePhoto(e: React.ChangeEvent<HTMLInputElement>) {

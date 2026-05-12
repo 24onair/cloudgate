@@ -390,7 +390,7 @@ function DetailPanel({
   onDeactivate: (reason: InactiveReason, note: string) => void;
   onReactivate: () => void;
   onDelete: () => void;
-  onUpdate?: (patch: { name: string; phone: string; email: string | null }) => void;
+  onUpdate?: (patch: { name: string; phone: string; email: string }) => void;
 }) {
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -427,7 +427,7 @@ function DetailPanel({
     });
     setSaving(false);
     setEditMode(false);
-    onUpdate?.({ name: name.trim() || pilot.name, phone: phone.trim() || pilot.phone, email: email.trim() || null });
+    onUpdate?.({ name: name.trim() || pilot.name, phone: phone.trim() || pilot.phone, email: email.trim() });
   }
 
   // 자격증 로컬 상태 (편집 후 DB 저장)

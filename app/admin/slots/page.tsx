@@ -103,13 +103,15 @@ export default function AdminSlotsPage() {
   function countRealPilots(date: string): number {
     return pilots.filter((p) => {
       const s = schedules[p.id]?.[date] as ScheduleStatus | undefined;
-      return s === "working" || s === "standby";
+      // 스케줄 미등록(undefined) = 기본 출근으로 처리
+      return !s || s === "working" || s === "standby";
     }).length;
   }
 
   const workingPilots = pilots.filter((p) => {
     const s = schedules[p.id]?.[selectedDate] as ScheduleStatus | undefined;
-    return s === "working" || s === "standby";
+    // 스케줄 미등록(undefined) = 기본 출근으로 처리
+    return !s || s === "working" || s === "standby";
   });
   const availablePilots = workingPilots.length;
 
@@ -257,7 +259,7 @@ export default function AdminSlotsPage() {
         ) : (
           <div className="flex flex-wrap gap-2">
             {workingPilots.map((p) => {
-              const status = schedules[p.id]?.[selectedDate] as ScheduleStatus;
+              const status = (schedules[p.id]?.[selectedDate] ?? "working") as ScheduleStatus;
               const cfg = SCHEDULE_CFG[status];
               return (
                 <div

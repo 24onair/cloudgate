@@ -1302,10 +1302,70 @@ function SafetyItemsEditor({ items, onChange }: SafetyItemEditorProps) {
   );
 }
 
+// DB 상품 타입 (settings 내부 전용)
+interface DbProductRow {
+  id: string; slug: string; name: string; subtitle: string; price: number;
+  duration_min: number | null; features: string[]; badge: string; is_featured: boolean;
+}
+
 function PageContentEditor() {
   const content = usePageContent();
   const [activeSection, setActiveSection] = useState<ContentSection>("hero");
   const [saved, setSaved] = useState(false);
+
+  // DB 상품 목록 (상품관리 페이지와 동기화)
+  const [dbProducts, setDbProducts] = useState<DbProductRow[]>([]);
+  useEffect(() => {
+    fetch("/api/products?all=true")
+      .then((r) => r.json())
+      .then((data: unknown) => { if (Array.isArray(data)) setDbProducts(data as DbProductRow[]); })
+      .catch(() => {/* pageContentStore fallback */});
+  }, []);
+
+  // DB 상품 → ProductItem 변환
+  const productItems: ProductItem[] = dbProducts.length > 0
+    ? dbProducts.map((p) => ({
+        id: p.id,
+        name: p.name ?? "",
+        subtitle: p.subtitle ?? "",
+        price: p.price ?? 0,
+        duration: p.duration_min != null ? `${p.duration_min}` : "",
+        features: Array.isArray(p.features) ? p.features : [],
+        badge: p.badge ?? "",
+        optionLabel: "",
+        featured: p.is_featured ?? false,
+      }))
+    : content.products;
+
+  // 상품 저장 → DB PATCH
+  async function handleProductSave(updated: ProductItem) {
+    const dbProd = dbProducts.find((p) => p.id === updated.id);
+    if (!dbProd) {
+      patch({ products: content.products.map((x) => x.id === updated.id ? updated : x) });
+      return;
+    }
+    try {
+      const res = await fetch("/api/products", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: dbProd.slug,
+          name: updated.name,
+          subtitle: updated.subtitle,
+          price: updated.price,
+          duration_min: parseInt(updated.duration) || null,
+          features: updated.features,
+          badge: updated.badge,
+          is_featured: updated.featured,
+        }),
+      });
+      if (res.ok) {
+        const saved = await res.json() as DbProductRow;
+        setDbProducts((prev) => prev.map((p) => p.id === updated.id ? { ...p, ...saved } : p));
+        flash();
+      }
+    } catch {/* ignore */}
+  }
 
   function flash() { setSaved(true); setTimeout(() => setSaved(false), 1800); }
   function patch(p: Partial<PageContent>) { setPageContent(p); flash(); }
@@ -1391,13 +1451,13 @@ function PageContentEditor() {
 
             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">상품 카드</p>
             <div className="space-y-2">
-              {content.products.map((p) => (
+              {productItems.length === 0 ? (
+                <p className="text-xs text-gray-400 py-2">상품관리에서 상품을 먼저 추가해주세요.</p>
+              ) : productItems.map((p) => (
                 <ProductCardEditor
                   key={p.id}
                   product={p}
-                  onSave={(updated) => {
-                    patch({ products: content.products.map((x) => x.id === updated.id ? updated : x) });
-                  }}
+                  onSave={handleProductSave}
                 />
               ))}
             </div>

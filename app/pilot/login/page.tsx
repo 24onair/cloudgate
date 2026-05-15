@@ -92,19 +92,20 @@ export default function PilotLoginPage() {
             <img
               src={logo.imageDataUrl}
               alt={logo.text || "로고"}
-              className="h-14 w-auto object-contain mb-3"
+              className="h-16 w-auto object-contain"
               style={{ filter: "brightness(0) invert(1)" }}
             />
           ) : (
-            <div
-              className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3"
-              style={{ backgroundColor: "#F54E00" }}
-            >
-              <Wind className="w-7 h-7 text-white" />
-            </div>
+            <>
+              <div
+                className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3"
+                style={{ backgroundColor: "#F54E00" }}
+              >
+                <Wind className="w-7 h-7 text-white" />
+              </div>
+              <h1 className="text-2xl font-bold text-white">{logo.text || "구름상회"}</h1>
+            </>
           )}
-          <h1 className="text-2xl font-bold text-white">{logo.text || "구름상회"}</h1>
-          <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>파일럿 포털</p>
         </div>
 
         <div
@@ -242,7 +243,7 @@ export default function PilotLoginPage() {
         </div>
 
         <p className="text-center text-xs mt-4" style={{ color: "rgba(255,255,255,0.2)" }}>
-          {logo.text || "구름상회"} 소속 파일럿만 접근할 수 있습니다
+          {logo.text || "구름상회"} 소속 파일럿 전용
         </p>
       </div>
     </div>

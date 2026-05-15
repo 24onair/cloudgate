@@ -529,17 +529,17 @@ export default function PilotPortalPage() {
       </div>
 
       {/* 진행 현황 */}
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-3 gap-2 mb-5">
         {[
-          { label: "총 배정", value: totalCount,                 sub: "건", color: "#23251d" },
-          { label: "완료",    value: completedCount,             sub: "건", color: "#16A34A" },
-          { label: "남은 비행", value: totalCount - completedCount, sub: "건", color: "#F54E00" },
+          { label: "총 배정",  value: totalCount,                    sub: "건", color: "#23251d" },
+          { label: "완료",     value: completedCount,                sub: "건", color: "#16A34A" },
+          { label: "남은비행", value: totalCount - completedCount,   sub: "건", color: "#F54E00" },
         ].map((stat) => (
-          <div key={stat.label} className="rounded-2xl p-4 text-center border" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
-            <p className="text-2xl font-bold" style={{ color: stat.color }}>
-              {stat.value}<span className="text-base font-normal ml-0.5" style={{ color: "#9ea096" }}>{stat.sub}</span>
+          <div key={stat.label} className="rounded-2xl px-2 py-3 text-center border" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
+            <p className="text-2xl font-bold leading-none" style={{ color: stat.color }}>
+              {stat.value}<span className="text-sm font-normal ml-0.5" style={{ color: "#9ea096" }}>{stat.sub}</span>
             </p>
-            <p className="text-xs mt-0.5" style={{ color: "#65675e" }}>{stat.label}</p>
+            <p className="text-[11px] mt-1 whitespace-nowrap" style={{ color: "#65675e" }}>{stat.label}</p>
           </div>
         ))}
       </div>
@@ -554,17 +554,12 @@ export default function PilotPortalPage() {
 
         {/* 헤더 */}
         <div
-          className="grid gap-1 px-2 pb-1.5 text-[10px] font-semibold border-b"
-          style={{
-            gridTemplateColumns: "2fr 2.5fr 1.5fr 2.5fr 1.5fr",
-            color: "#9ea096",
-            borderColor: "#e5e7e0",
-          }}
+          className="grid px-2 pb-1.5 text-[10px] font-semibold border-b"
+          style={{ gridTemplateColumns: "44px 1fr 36px 36px", color: "#9ea096", borderColor: "#e5e7e0" }}
         >
           <div>시간</div>
           <div>예약자</div>
           <div className="text-center">인원</div>
-          <div>코스</div>
           <div className="text-right">배정</div>
         </div>
 
@@ -579,35 +574,37 @@ export default function PilotPortalPage() {
               return (
                 <div
                   key={b.id}
-                  className="grid gap-1 px-2 py-2.5 items-center text-sm"
+                  className="grid px-2 py-2 items-center"
                   style={{
-                    gridTemplateColumns: "2fr 2.5fr 1.5fr 2.5fr 1.5fr",
+                    gridTemplateColumns: "44px 1fr 36px 36px",
                     backgroundColor: isMine ? "#eeefe9" : "transparent",
                   }}
                 >
                   <div className="font-bold text-xs" style={{ color: "#23251d" }}>
                     {b.flight_time?.slice(0, 5) ?? "—"}
                   </div>
-                  <div className="truncate text-xs" style={{ color: isMine ? "#23251d" : "#65675e" }}>
-                    {b.customer_name}
+                  <div className="min-w-0">
+                    <div className="truncate text-xs font-medium" style={{ color: isMine ? "#23251d" : "#65675e" }}>
+                      {b.customer_name}
+                    </div>
+                    <div className="truncate text-[10px]" style={{ color: "#9ea096" }}>
+                      {b.product_name}
+                    </div>
                   </div>
                   <div className="text-center">
                     <span
-                      className="inline-block px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+                      className="inline-block px-1 py-0.5 rounded-full text-[10px] font-medium"
                       style={{
                         backgroundColor: (b.headcount ?? 1) >= 4 ? "#FEF3C7" : "#e5e7e0",
                         color: (b.headcount ?? 1) >= 4 ? "#B45309" : "#4d4f46",
                       }}
                     >
-                      {b.headcount ?? 1}명
+                      {b.headcount ?? 1}
                     </span>
-                  </div>
-                  <div className="truncate text-xs" style={{ color: "#65675e" }}>
-                    {b.product_name}
                   </div>
                   <div className="text-right text-xs font-semibold">
                     {isMine ? (
-                      <span style={{ color: "#F54E00" }}>배정</span>
+                      <span style={{ color: "#F54E00" }}>✓</span>
                     ) : (
                       <span style={{ color: "#bfc1b7" }}>—</span>
                     )}
@@ -1799,24 +1796,24 @@ export default function PilotPortalPage() {
   const licenseExpiry = pilotInfo?.license_expiry ?? "";
 
   return (
-    <div className="max-w-md mx-auto min-h-screen flex flex-col" style={{ backgroundColor: "#eeefe9" }}>
+    <div className="w-full max-w-md mx-auto min-h-screen flex flex-col overflow-x-hidden" style={{ backgroundColor: "#eeefe9" }}>
       {/* 헤더 */}
       <div className="px-5 pt-8 pb-5" style={{ backgroundColor: "#23251d" }}>
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1 mr-3">
             {logo.imageDataUrl ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={logo.imageDataUrl}
                 alt={logo.text || "로고"}
-                className="h-7 w-auto object-contain"
+                className="h-7 w-auto object-contain flex-shrink-0"
                 style={{ filter: "brightness(0) invert(1)" }}
               />
             ) : (
-              <Wind className="w-5 h-5" style={{ color: "#F54E00" }} />
+              <Wind className="w-5 h-5 flex-shrink-0" style={{ color: "#F54E00" }} />
             )}
             {(!logo.imageDataUrl || logo.showText) && (
-              <span className="text-white font-bold">{logo.text || "구름상회"}</span>
+              <span className="text-white font-bold text-sm truncate">{logo.text || "구름상회"}</span>
             )}
           </div>
           <button
@@ -1881,7 +1878,7 @@ export default function PilotPortalPage() {
       </div>
 
       {/* 컨텐츠 */}
-      <div className="flex-1 px-4 py-5 overflow-auto">
+      <div className="flex-1 px-4 py-5 overflow-x-hidden overflow-y-auto min-w-0">
         {tab === "today"      && <TodayTab />}
         {tab === "history"    && <HistoryTab />}
         {tab === "settlement" && <SettlementTab />}

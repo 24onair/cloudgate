@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Wind,
@@ -26,6 +26,11 @@ interface DbPilot {
   status?: string;
 }
 
+interface BookingPilot {
+  pilot_id: string;
+  slot_no: number;
+}
+
 interface ApiBooking {
   id: string;
   booking_no: string;
@@ -37,6 +42,7 @@ interface ApiBooking {
   options: (string | { name: string })[] | null;
   status: string;
   pilot_id: string | null;
+  booking_pilots?: BookingPilot[];
 }
 
 interface FlightRecord {
@@ -114,50 +120,7 @@ function getWeekStart(): string {
   return localDateStr(d);
 }
 
-// ─── 비행기록 상세 (날짜별) — 정산탭 일별 상세에서 사용 ────────────────────────
-
-interface HistoryFlight {
-  booking_id: string;
-  time_slot: string;
-  customer_name: string;
-  group_size: number;   // 1이면 개인, >1이면 단체
-  slot_no: number;
-  product_name: string;
-  options: string[];
-  landed_at: string;
-}
-
-const HISTORY_DETAIL: Record<string, HistoryFlight[]> = {
-  "2026-04-28": [
-    { booking_id: "BK-20260428-0801", time_slot: "09:00", customer_name: "이지원", group_size: 1, slot_no: 1, product_name: "베이직",   options: [],                      landed_at: "09:12" },
-    { booking_id: "BK-20260428-0923", time_slot: "10:30", customer_name: "강현석", group_size: 1, slot_no: 1, product_name: "VIP",      options: ["사진 패키지"],           landed_at: "10:44" },
-    { booking_id: "BK-20260428-1102", time_slot: "12:00", customer_name: "유시연", group_size: 1, slot_no: 1, product_name: "베이직",   options: ["사진 패키지"],           landed_at: "12:14" },
-    { booking_id: "BK-20260428-1350", time_slot: "14:00", customer_name: "백도현", group_size: 1, slot_no: 1, product_name: "익스트림", options: [],                      landed_at: "14:18" },
-    { booking_id: "BK-20260428-1521", time_slot: "15:30", customer_name: "장미래", group_size: 1, slot_no: 1, product_name: "베이직",   options: [],                      landed_at: "15:43" },
-  ],
-  "2026-04-29": [
-    { booking_id: "BK-20260429-0811", time_slot: "09:00", customer_name: "김태양", group_size: 1, slot_no: 1, product_name: "베이직",   options: [],                      landed_at: "09:11" },
-    { booking_id: "BK-20260429-0834", time_slot: "09:30", customer_name: "박서윤", group_size: 1, slot_no: 1, product_name: "베이직",   options: ["사진 패키지"],           landed_at: "09:43" },
-    { booking_id: "BK-20260429-1001", time_slot: "10:30", customer_name: "최강인", group_size: 1, slot_no: 1, product_name: "VIP",      options: ["사진+영상 풀 패키지"],   landed_at: "10:45" },
-    { booking_id: "BK-20260429-1088", time_slot: "11:00", customer_name: "오유진", group_size: 4, slot_no: 1, product_name: "익스트림", options: ["사진 패키지"],           landed_at: "11:16" },
-    { booking_id: "BK-20260429-1088", time_slot: "11:00", customer_name: "오유진", group_size: 4, slot_no: 2, product_name: "익스트림", options: ["사진 패키지"],           landed_at: "11:32" },
-    { booking_id: "BK-20260429-1301", time_slot: "13:00", customer_name: "신하은", group_size: 1, slot_no: 1, product_name: "베이직",   options: [],                      landed_at: "13:12" },
-    { booking_id: "BK-20260429-1511", time_slot: "15:00", customer_name: "황민성", group_size: 1, slot_no: 1, product_name: "VIP",      options: ["사진+영상 풀 패키지"],   landed_at: "15:17" },
-    { booking_id: "BK-20260429-1641", time_slot: "16:30", customer_name: "임수아", group_size: 1, slot_no: 1, product_name: "익스트림", options: [],                      landed_at: "16:48" },
-  ],
-  "2026-04-30": [
-    { booking_id: "BK-20260430-1001", time_slot: "10:00", customer_name: "조현준", group_size: 1, slot_no: 1, product_name: "베이직",   options: [],                      landed_at: "10:13" },
-    { booking_id: "BK-20260430-1302", time_slot: "13:00", customer_name: "권나래", group_size: 1, slot_no: 1, product_name: "VIP",      options: ["사진 패키지"],           landed_at: "13:16" },
-    { booking_id: "BK-20260430-1531", time_slot: "15:30", customer_name: "문지훈", group_size: 1, slot_no: 1, product_name: "베이직",   options: ["사진 패키지"],           landed_at: "15:43" },
-  ],
-  "2026-05-01": [
-    { booking_id: "BK-20260501-1021", time_slot: "09:00", customer_name: "이수진", group_size: 1, slot_no: 1, product_name: "베이직",   options: [],                      landed_at: "09:14" },
-    { booking_id: "BK-20260501-1045", time_slot: "10:30", customer_name: "최현우", group_size: 1, slot_no: 1, product_name: "베이직",   options: ["사진 패키지"],           landed_at: "10:43" },
-    { booking_id: "BK-20260501-1110", time_slot: "11:30", customer_name: "오세훈", group_size: 8, slot_no: 2, product_name: "익스트림", options: ["사진+영상 풀 패키지"],   landed_at: "11:52" },
-  ],
-};
-
-// ─── 월별 정산 데이터 ──────────────────────────────────────────────────────────
+// ─── 정산 타입 정의 ────────────────────────────────────────────────────────────
 
 type SettlementStatus = "draft" | "confirmed" | "paid";
 
@@ -175,7 +138,7 @@ interface MonthRecord {
   rate: number;
   payment_due?: string;
   paid_at?: string;
-  days: SettlementDay[];   // count > 0인 날만 포함
+  days: SettlementDay[];
 }
 
 function monthTotal(m: MonthRecord) {
@@ -188,17 +151,13 @@ function monthAmount(m: MonthRecord) {
 // 주별 헬퍼 — 해당 날짜가 속한 주의 월요일 반환
 function mondayOf(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
-  const dow = d.getDay(); // 0=일
+  const dow = d.getDay();
   const diff = dow === 0 ? -6 : 1 - dow;
   d.setDate(d.getDate() + diff);
   return d.toISOString().split("T")[0];
 }
 
 const KR_DAYS = ["일", "월", "화", "수", "목", "금", "토"];
-
-function krDay(dateStr: string) {
-  return KR_DAYS[new Date(dateStr + "T00:00:00").getDay()];
-}
 
 // 주 범위 레이블: "5/5(월)~5/11(일)"
 function weekRangeLabel(mondayStr: string): string {
@@ -220,81 +179,6 @@ function weekOrdinalLabel(mondayStr: string): string {
   const weekNo = Math.floor((mon.getTime() - firstMon.getTime()) / (7 * 86400000)) + 1;
   return `${mth + 1}월 ${Math.max(weekNo, 1)}주차`;
 }
-
-const MONTHLY_SETTLEMENTS: MonthRecord[] = [
-  {
-    month: "2026-05", label: "2026년 5월",
-    status: "draft", rate: 15000,
-    payment_due: "2026-06-07",
-    days: [
-      { date: "2026-05-01", day: "목", count: 3,  subtotal: 45000  },
-      { date: "2026-05-02", day: "금", count: 4,  subtotal: 60000  },
-      { date: "2026-05-03", day: "토", count: 6,  subtotal: 90000  },
-      { date: "2026-05-04", day: "일", count: 5,  subtotal: 75000  },
-      { date: "2026-05-06", day: "화", count: 4,  subtotal: 60000  },
-      { date: "2026-05-07", day: "수", count: 3,  subtotal: 45000  },
-      { date: "2026-05-08", day: "목", count: 3,  subtotal: 45000  },
-    ],
-  },
-  {
-    month: "2026-04", label: "2026년 4월",
-    status: "paid", rate: 15000,
-    payment_due: "2026-05-10", paid_at: "2026-05-09",
-    days: [
-      { date: "2026-04-05", day: "일", count: 5,  subtotal: 75000  },
-      { date: "2026-04-06", day: "월", count: 6,  subtotal: 90000  },
-      { date: "2026-04-09", day: "목", count: 3,  subtotal: 45000  },
-      { date: "2026-04-11", day: "토", count: 4,  subtotal: 60000  },
-      { date: "2026-04-12", day: "일", count: 7,  subtotal: 105000 },
-      { date: "2026-04-13", day: "월", count: 6,  subtotal: 90000  },
-      { date: "2026-04-16", day: "목", count: 3,  subtotal: 45000  },
-      { date: "2026-04-18", day: "토", count: 4,  subtotal: 60000  },
-      { date: "2026-04-19", day: "일", count: 8,  subtotal: 120000 },
-      { date: "2026-04-20", day: "월", count: 7,  subtotal: 105000 },
-      { date: "2026-04-23", day: "목", count: 3,  subtotal: 45000  },
-      { date: "2026-04-25", day: "토", count: 4,  subtotal: 60000  },
-      { date: "2026-04-26", day: "일", count: 7,  subtotal: 105000 },
-      { date: "2026-04-27", day: "일", count: 6,  subtotal: 90000  },
-      { date: "2026-04-28", day: "월", count: 5,  subtotal: 75000  },
-      { date: "2026-04-29", day: "화", count: 8,  subtotal: 120000 },
-      { date: "2026-04-30", day: "수", count: 3,  subtotal: 45000  },
-    ],
-  },
-  {
-    month: "2026-03", label: "2026년 3월",
-    status: "paid", rate: 15000,
-    payment_due: "2026-04-11", paid_at: "2026-04-10",
-    days: [
-      { date: "2026-03-01", day: "일", count: 4,  subtotal: 60000  },
-      { date: "2026-03-07", day: "토", count: 5,  subtotal: 75000  },
-      { date: "2026-03-08", day: "일", count: 6,  subtotal: 90000  },
-      { date: "2026-03-12", day: "목", count: 3,  subtotal: 45000  },
-      { date: "2026-03-14", day: "토", count: 5,  subtotal: 75000  },
-      { date: "2026-03-15", day: "일", count: 6,  subtotal: 90000  },
-      { date: "2026-03-19", day: "목", count: 3,  subtotal: 45000  },
-      { date: "2026-03-21", day: "토", count: 5,  subtotal: 75000  },
-      { date: "2026-03-22", day: "일", count: 6,  subtotal: 90000  },
-      { date: "2026-03-26", day: "목", count: 3,  subtotal: 45000  },
-      { date: "2026-03-28", day: "토", count: 6,  subtotal: 90000  },
-      { date: "2026-03-29", day: "일", count: 5,  subtotal: 75000  },
-    ],
-  },
-];
-
-// ─── 정산 파생 데이터 (모듈 레벨) ─────────────────────────────────────────────
-
-// 전체 날짜 오름차순 (누적/일별 뷰용)
-const ALL_SDAYS: SettlementDay[] = MONTHLY_SETTLEMENTS
-  .flatMap((m) => m.days)
-  .sort((a, b) => a.date.localeCompare(b.date));
-
-// 주별 그룹 (key = 해당 주 월요일 날짜)
-const WEEK_MAP: Record<string, SettlementDay[]> = {};
-for (const d of ALL_SDAYS) {
-  const mon = mondayOf(d.date);
-  (WEEK_MAP[mon] ??= []).push(d);
-}
-const WEEK_KEYS = Object.keys(WEEK_MAP).sort().reverse(); // 최신 주 먼저
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -346,14 +230,39 @@ export default function PilotPortalPage() {
   const [landingKey, setLandingKey] = useState<string | null>(null);
   const [selectedHistoryDate, setSelectedHistoryDate] = useState<string | null>(null);
 
+  // ── 정산 데이터 (API)
+  const [settlements, setSettlements]         = useState<MonthRecord[]>([]);
+  const [settlementRate, setSettlementRate]   = useState(30000);
+  const [loadingSettlement, setLoadingSettlement] = useState(false);
+
   // ── 정산 탭 상태
   const [settleView, setSettleView]           = useState<SettleView>("monthly");
   const [settlementMonthIdx, setSettlementMonthIdx] = useState(0);
   const [settleWeekIdx, setSettleWeekIdx]     = useState(0);
-  const [settleDayIdx, setSettleDayIdx]       = useState(ALL_SDAYS.length - 1);
+  const [settleDayIdx, setSettleDayIdx]       = useState(0);
   const [settleDayShowDetail, setSettleDayShowDetail] = useState(false);
-  const [cumulFrom, setCumulFrom]             = useState(ALL_SDAYS[0]?.date ?? "2026-03-01");
-  const [cumulTo, setCumulTo]                 = useState(ALL_SDAYS[ALL_SDAYS.length - 1]?.date ?? "2026-05-08");
+  const [cumulFrom, setCumulFrom]             = useState("");
+  const [cumulTo, setCumulTo]                 = useState("");
+
+  // ── 정산 파생 데이터 (useMemo)
+  const ALL_SDAYS = useMemo<SettlementDay[]>(
+    () => settlements.flatMap((m) => m.days).sort((a, b) => a.date.localeCompare(b.date)),
+    [settlements]
+  );
+  const WEEK_MAP = useMemo<Record<string, SettlementDay[]>>(() => {
+    const m: Record<string, SettlementDay[]> = {};
+    for (const d of ALL_SDAYS) { const mon = mondayOf(d.date); (m[mon] ??= []).push(d); }
+    return m;
+  }, [ALL_SDAYS]);
+  const WEEK_KEYS = useMemo(() => Object.keys(WEEK_MAP).sort().reverse(), [WEEK_MAP]);
+
+  // ── 스케줄 탭 상태
+  const [scheduleYearMonth, setScheduleYearMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [scheduleData, setScheduleData]       = useState<Record<string, string>>({});  // date→status
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
 
   // ── 파일럿 ID 로드 (세션 쿠키 → /api/pilot/me)
   useEffect(() => {
@@ -388,7 +297,10 @@ export default function PilotPortalPage() {
       const res = await fetch(`/api/bookings?date=${today}`);
       const data: ApiBooking[] = await res.json();
       setAllTodayBookings(data);
-      const mine = data.filter((b) => b.pilot_id === pilotId);
+      const mine = data.filter((b) =>
+        b.booking_pilots?.some((bp) => bp.pilot_id === pilotId) ||
+        b.pilot_id === pilotId
+      );
       setFlights(mine.map(toMyFlight));
     } catch (err) {
       console.error("오늘 예약 조회 실패:", err);
@@ -417,6 +329,42 @@ export default function PilotPortalPage() {
   useEffect(() => {
     fetchWeekRecords();
   }, [fetchWeekRecords]);
+
+  // ── 정산 데이터 로드 (API)
+  useEffect(() => {
+    if (!pilotId) return;
+    setLoadingSettlement(true);
+    fetch("/api/pilot/settlement")
+      .then((r) => r.json())
+      .then((data: { months: MonthRecord[]; rate: number }) => {
+        if (Array.isArray(data.months)) {
+          setSettlements(data.months);
+          setSettlementRate(data.rate ?? 30000);
+          // 초기 인덱스/범위 설정
+          const allDays = data.months.flatMap((m) => m.days).sort((a, b) => a.date.localeCompare(b.date));
+          if (allDays.length > 0) {
+            setSettleDayIdx(allDays.length - 1);
+            setCumulFrom(allDays[0].date);
+            setCumulTo(allDays[allDays.length - 1].date);
+          }
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoadingSettlement(false));
+  }, [pilotId]);
+
+  // ── 스케줄 데이터 로드 (API)
+  useEffect(() => {
+    if (!pilotId) return;
+    setLoadingSchedule(true);
+    fetch(`/api/schedules?year_month=${scheduleYearMonth}`)
+      .then((r) => r.json())
+      .then((data: Record<string, Record<string, string>>) => {
+        setScheduleData(data[pilotId] ?? {});
+      })
+      .catch(console.error)
+      .finally(() => setLoadingSchedule(false));
+  }, [pilotId, scheduleYearMonth]);
 
   // ── 히스토리 날짜 상세 로드
   useEffect(() => {
@@ -559,7 +507,9 @@ export default function PilotPortalPage() {
             .slice()
             .sort((a, b) => (a.flight_time ?? "").localeCompare(b.flight_time ?? ""))
             .map((b) => {
-              const isMine = b.pilot_id === pilotId;
+              const isMine =
+                b.booking_pilots?.some((bp) => bp.pilot_id === pilotId) ||
+                b.pilot_id === pilotId;
               return (
                 <div
                   key={b.id}
@@ -937,8 +887,127 @@ export default function PilotPortalPage() {
     );
   };
 
+  // ── Schedule Tab ─────────────────────────────────────────────────────────────
+  const ScheduleTab = () => {
+    const statusConfig: Record<string, { label: string; bg: string; color: string }> = {
+      working:  { label: "출근",   bg: "#DCFCE7", color: "#16A34A" },
+      off:      { label: "휴무",   bg: "#FEE2E2", color: "#DC2626" },
+      standby:  { label: "대기",   bg: "#FEF3C7", color: "#D97706" },
+    };
+
+    const [y, mo] = scheduleYearMonth.split("-").map(Number);
+    const daysInMonth = new Date(y, mo, 0).getDate();
+    const firstDow = new Date(y, mo - 1, 1).getDay(); // 0=일
+
+    const prevMonth = () => {
+      const d = new Date(y, mo - 2, 1);
+      setScheduleYearMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    };
+    const nextMonth = () => {
+      const d = new Date(y, mo, 1);
+      setScheduleYearMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    };
+
+    const cells: (string | null)[] = [
+      ...Array(firstDow).fill(null),
+      ...Array.from({ length: daysInMonth }, (_, i) => {
+        const dd = String(i + 1).padStart(2, "0");
+        return `${scheduleYearMonth}-${dd}`;
+      }),
+    ];
+    // 6주 그리드 위해 뒤를 null로 채움
+    while (cells.length % 7 !== 0) cells.push(null);
+
+    const todayStr = new Date().toLocaleDateString("sv-SE"); // "YYYY-MM-DD"
+
+    return (
+      <div>
+        {/* 월 네비게이션 */}
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={prevMonth} className="p-2 rounded-full" style={{ color: "#4d4f46" }}>
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <span className="font-bold text-base" style={{ color: "#23251d" }}>{y}년 {mo}월</span>
+          <button onClick={nextMonth} className="p-2 rounded-full" style={{ color: "#4d4f46" }}>
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* 안내 */}
+        <div className="text-xs rounded-xl px-4 py-3 mb-4 flex items-center gap-2"
+          style={{ backgroundColor: "#eeefe9", color: "#65675e" }}>
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#9ea096" }} />
+          <span>날짜를 탭하면 출근 → 휴무 → 대기 순으로 변경됩니다. 관리자 화면에 즉시 반영됩니다.</span>
+        </div>
+
+        {/* 요일 헤더 */}
+        <div className="grid grid-cols-7 mb-1">
+          {["일","월","화","수","목","금","토"].map((d, i) => (
+            <div key={d} className="text-center text-[11px] font-semibold py-1"
+              style={{ color: i === 0 ? "#DC2626" : i === 6 ? "#2563EB" : "#9ea096" }}>
+              {d}
+            </div>
+          ))}
+        </div>
+
+        {/* 달력 셀 */}
+        {loadingSchedule ? (
+          <div className="text-center py-8 text-sm" style={{ color: "#9ea096" }}>불러오는 중…</div>
+        ) : (
+          <div className="grid grid-cols-7 gap-1">
+            {cells.map((dateStr, idx) => {
+              if (!dateStr) return <div key={idx} />;
+              const day = parseInt(dateStr.slice(8));
+              const dow = (firstDow + (day - 1)) % 7;
+              const status = scheduleData[dateStr] ?? "working";
+              const cfg = statusConfig[status] ?? statusConfig.working;
+              const isToday = dateStr === todayStr;
+              return (
+                <button
+                  key={dateStr}
+                  onClick={() => toggleScheduleDay(dateStr)}
+                  className="rounded-xl py-2 flex flex-col items-center gap-0.5 transition-all active:scale-95"
+                  style={{ backgroundColor: cfg.bg }}
+                >
+                  <span className="text-xs font-bold"
+                    style={{
+                      color: isToday ? "#F54E00" : dow === 0 ? "#DC2626" : dow === 6 ? "#2563EB" : "#23251d",
+                    }}>
+                    {isToday ? "오늘" : day}
+                  </span>
+                  <span className="text-[10px]" style={{ color: cfg.color }}>{cfg.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 범례 */}
+        <div className="flex gap-3 mt-4 justify-center">
+          {Object.entries(statusConfig).map(([key, cfg]) => (
+            <div key={key} className="flex items-center gap-1.5 text-xs" style={{ color: "#65675e" }}>
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cfg.bg, border: `1.5px solid ${cfg.color}` }} />
+              {cfg.label}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   // ── Settlement Tab ──────────────────────────────────────────────────────────
   const SettlementTab = () => {
+    if (loadingSettlement) {
+      return <div className="text-center py-16 text-sm" style={{ color: "#9ea096" }}>정산 데이터 불러오는 중…</div>;
+    }
+    if (settlements.length === 0) {
+      return (
+        <div className="rounded-2xl px-5 py-12 text-center border" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
+          <p className="text-base font-semibold mb-1" style={{ color: "#23251d" }}>정산 내역이 없습니다</p>
+          <p className="text-sm" style={{ color: "#9ea096" }}>비행을 완료하면 정산 내역이 여기에 표시됩니다.</p>
+        </div>
+      );
+    }
     const statusStyle: Record<SettlementStatus, { label: string; color: string; bg: string; border: string }> = {
       draft:     { label: "집계 중",   color: "#D97706", bg: "#FFFBEB", border: "#FCD34D" },
       confirmed: { label: "정산 확정", color: "#15803D", bg: "#F0FDF4", border: "#86EFAC" },
@@ -1114,7 +1183,8 @@ export default function PilotPortalPage() {
 
     // ── 월별 뷰 ─────────────────────────────────────────────────────────────
     if (settleView === "monthly") {
-      const rec = MONTHLY_SETTLEMENTS[settlementMonthIdx];
+      const rec = settlements[settlementMonthIdx];
+      if (!rec) return <div className="text-center py-12 text-sm" style={{ color: "#9ea096" }}>정산 데이터가 없습니다</div>;
       const total  = monthTotal(rec);
       const amount = monthAmount(rec);
       return (
@@ -1124,7 +1194,7 @@ export default function PilotPortalPage() {
             label={rec.label}
             onPrev={() => setSettlementMonthIdx((i) => i + 1)}
             onNext={() => setSettlementMonthIdx((i) => i - 1)}
-            disablePrev={settlementMonthIdx >= MONTHLY_SETTLEMENTS.length - 1}
+            disablePrev={settlementMonthIdx >= settlements.length - 1}
             disableNext={settlementMonthIdx <= 0}
           />
           <SummaryCard
@@ -1139,7 +1209,7 @@ export default function PilotPortalPage() {
           <div className="rounded-2xl p-4 mb-4 border" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
             <p className="text-xs font-semibold mb-3" style={{ color: "#9ea096" }}>정산 이력</p>
             <div className="space-y-2">
-              {MONTHLY_SETTLEMENTS.map((m, idx) => {
+              {settlements.map((m, idx) => {
                 const mst = statusStyle[m.status];
                 return (
                   <button key={m.month} onClick={() => setSettlementMonthIdx(idx)}
@@ -1177,7 +1247,7 @@ export default function PilotPortalPage() {
       const label    = `${weekOrdinalLabel(weekKey)} · ${weekRangeLabel(weekKey)}`;
       // 해당 주의 정산 상태 — 속한 월의 status 로 대리
       const monthOfWeek = weekKey.slice(0, 7);
-      const monthRec = MONTHLY_SETTLEMENTS.find((m) => m.month === monthOfWeek);
+      const monthRec = settlements.find((m) => m.month === monthOfWeek);
       const weekStatus: SettlementStatus = monthRec?.status ?? "draft";
       const weekPaidLabel = weekStatus === "paid" ? "지급 완료일" : "지급 예정일";
       const weekPayDate   = weekStatus === "paid" ? monthRec?.paid_at : monthRec?.payment_due;
@@ -1192,7 +1262,7 @@ export default function PilotPortalPage() {
             disableNext={settleWeekIdx <= 0}
           />
           <SummaryCard
-            title="주간 정산 요약" total={total} amount={amount} rate={15000}
+            title="주간 정산 요약" total={total} amount={amount} rate={settlementRate}
             statusKey={weekStatus}
             payLabel={weekPaidLabel} payDate={weekPayDate}
             barDays={weekDays}
@@ -1215,9 +1285,24 @@ export default function PilotPortalPage() {
       const isWknd   = day.day === "토" || day.day === "일";
       const dateLabel = `${day.date.slice(0, 4)}년 ${parseInt(day.date.slice(5, 7))}월 ${parseInt(day.date.slice(8))}일 (${day.day})`;
       const monthOfDay  = day.date.slice(0, 7);
-      const dayMonthRec = MONTHLY_SETTLEMENTS.find((m) => m.month === monthOfDay);
+      const dayMonthRec = settlements.find((m) => m.month === monthOfDay);
       const dayStatus: SettlementStatus = dayMonthRec?.status ?? "draft";
-      const detailFlights = HISTORY_DETAIL[day.date] ?? [];
+      // 실제 비행기록 (historyDetailRecords는 selectedHistoryDate 기준으로 로드됨)
+      const detailFlights = historyDetailRecords
+        .filter((r) => r.flight_date === day.date)
+        .map((r, i) => ({
+          booking_id:    r.booking_id,
+          time_slot:     r.bookings?.flight_time?.slice(0, 5) ?? "--:--",
+          customer_name: r.bookings?.customer_name ?? "",
+          group_size:    r.bookings?.headcount ?? 1,
+          slot_no:       i + 1,
+          product_name:  r.bookings?.product_name ?? "",
+          options:       Array.isArray(r.bookings?.options)
+                           ? (r.bookings!.options as (string | { name: string })[])
+                               .map((o) => (typeof o === "string" ? o : o.name))
+                           : [],
+          landed_at:     r.landing_at ? String(r.landing_at).slice(11, 16) : "--:--",
+        }));
 
       function goToDay(idx: number) {
         setSettleDayIdx(idx);
@@ -1336,7 +1421,7 @@ export default function PilotPortalPage() {
           />
           {/* 일 요약 카드 — 클릭하면 상세 일정 */}
           <button
-            onClick={() => setSettleDayShowDetail(true)}
+            onClick={() => { setSelectedHistoryDate(day.date); setSettleDayShowDetail(true); }}
             className="w-full rounded-2xl px-5 py-4 mb-4 border text-left transition-all active:scale-[0.98]"
             style={{ backgroundColor: isWknd ? "#FFF7ED" : "#fdfdf8", borderColor: isWknd ? "#FED7AA" : "#bfc1b7" }}
           >
@@ -1386,7 +1471,7 @@ export default function PilotPortalPage() {
                 .map((d) => {
                   const isSelected = d.date === day.date;
                   const idx = ALL_SDAYS.indexOf(d);
-                  const hasDetail = (HISTORY_DETAIL[d.date] ?? []).length > 0;
+                  const hasDetail = d.count > 0;
                   return (
                     <button
                       key={d.date}
@@ -1429,7 +1514,7 @@ export default function PilotPortalPage() {
     for (const d of filtered) {
       const mKey = d.date.slice(0, 7);
       if (!byMonth[mKey]) {
-        const mRec = MONTHLY_SETTLEMENTS.find((m) => m.month === mKey);
+        const mRec = settlements.find((m) => m.month === mKey);
         byMonth[mKey] = { count: 0, amount: 0, label: mRec?.label ?? mKey };
       }
       byMonth[mKey].count  += d.count;
@@ -1473,8 +1558,8 @@ export default function PilotPortalPage() {
           {/* 빠른 선택 버튼 */}
           <div className="flex gap-2 mt-3 flex-wrap">
             {[
-              { label: "이번 달",   from: MONTHLY_SETTLEMENTS[0].days[0]?.date ?? cumulFrom, to: ALL_SDAYS[ALL_SDAYS.length - 1]?.date },
-              { label: "최근 3개월", from: MONTHLY_SETTLEMENTS[MONTHLY_SETTLEMENTS.length - 1].days[0]?.date ?? cumulFrom, to: ALL_SDAYS[ALL_SDAYS.length - 1]?.date },
+              { label: "이번 달",    from: settlements[0]?.days[0]?.date ?? cumulFrom, to: ALL_SDAYS[ALL_SDAYS.length - 1]?.date },
+              { label: "최근 3개월", from: settlements[Math.min(settlements.length - 1, 2)]?.days[0]?.date ?? cumulFrom, to: ALL_SDAYS[ALL_SDAYS.length - 1]?.date },
               { label: "전체",      from: ALL_SDAYS[0]?.date, to: ALL_SDAYS[ALL_SDAYS.length - 1]?.date },
             ].map((preset) => (
               <button
@@ -1531,7 +1616,7 @@ export default function PilotPortalPage() {
               </thead>
               <tbody>
                 {monthEntries.map(([mKey, mv]) => {
-                  const mRec = MONTHLY_SETTLEMENTS.find((m) => m.month === mKey);
+                  const mRec = settlements.find((m) => m.month === mKey);
                   const mst  = statusStyle[mRec?.status ?? "draft"];
                   const pct  = cumulAmount > 0 ? (mv.amount / cumulAmount) * 100 : 0;
                   return (
@@ -1584,6 +1669,25 @@ export default function PilotPortalPage() {
   };
 
   // ─── Render ────────────────────────────────────────────────────────────────
+
+  // ── 스케줄 상태 토글 (work→off→standby→work)
+  async function toggleScheduleDay(date: string) {
+    if (!pilotId) return;
+    const cur = scheduleData[date] ?? "working";
+    const next = cur === "working" ? "off" : cur === "off" ? "standby" : "working";
+    setScheduleData((prev) => ({ ...prev, [date]: next }));
+    try {
+      await fetch("/api/schedules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pilotId, date, status: next }),
+      });
+    } catch (err) {
+      console.error("스케줄 업데이트 실패:", err);
+      // 실패 시 원복
+      setScheduleData((prev) => ({ ...prev, [date]: cur }));
+    }
+  }
 
   const tabItems = [
     { key: "today" as const,      label: "오늘 일정", icon: <CalendarDays className="w-4 h-4" /> },
@@ -1649,12 +1753,8 @@ export default function PilotPortalPage() {
           <button
             key={t.key}
             onClick={() => {
-              if (t.key === "schedule") {
-                router.push("/pilot/schedule");
-              } else {
-                setTab(t.key);
-                setSelectedHistoryDate(null);
-              }
+              setTab(t.key);
+              setSelectedHistoryDate(null);
             }}
             className="flex-1 flex flex-col items-center gap-1 py-3 text-xs font-medium transition-colors"
             style={
@@ -1674,6 +1774,7 @@ export default function PilotPortalPage() {
         {tab === "today"      && <TodayTab />}
         {tab === "history"    && <HistoryTab />}
         {tab === "settlement" && <SettlementTab />}
+        {tab === "schedule"   && <ScheduleTab />}
       </div>
     </div>
   );

@@ -28,6 +28,40 @@ import { useFooter } from "@/lib/footerStore";
 import { usePageContent } from "@/lib/pageContentStore";
 import { useReviews } from "@/lib/reviewStore";
 
+// ── DB 상품 타입 ──────────────────────────────────────────────────
+interface DbProduct {
+  id: string;
+  slug: string;
+  name: string;
+  subtitle: string | null;
+  price: number;
+  duration_min: number | null;
+  features: string[] | null;
+  badge: string | null;
+  is_featured: boolean;
+  is_active: boolean;
+  sort_order: number;
+}
+interface DbOption {
+  id: string;
+  product_id: string | null;
+  name: string;
+  price: number;
+}
+
+// DB 상품 → 홈 카드용 포맷 변환
+function makeOptionLabel(productSlug: string, dbProducts: DbProduct[], dbOptions: DbOption[]): string {
+  const product = dbProducts.find((p) => p.slug === productSlug);
+  if (!product) return "";
+  // 이 상품 전용 옵션 또는 전체 공통 옵션(product_id=null)
+  const opts = dbOptions.filter(
+    (o) => o.product_id === product.id || o.product_id === null
+  );
+  if (opts.length === 0) return "";
+  const o = opts[0];
+  return `${o.name} +${o.price.toLocaleString()}원`;
+}
+
 // ── 데이터 ────────────────────────────────────────────────────────
 // PRODUCTS, SAFETY 는 pageContentStore 에서 런타임에 로드됩니다.
 
@@ -120,6 +154,23 @@ export default function LandingPage() {
     window.addEventListener("scroll", handler);
     return () => window.removeEventListener("scroll", handler);
   }, []);
+
+  // ── DB 상품 실시간 조회 ──────────────────────────────────────────
+  const [dbProducts, setDbProducts] = useState<DbProduct[]>([]);
+  const [dbOptions,  setDbOptions]  = useState<DbOption[]>([]);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/products").then((r) => r.ok ? r.json() : []),
+      fetch("/api/product-options").then((r) => r.ok ? r.json() : []),
+    ]).then(([prods, opts]) => {
+      if (Array.isArray(prods)) setDbProducts(prods);
+      if (Array.isArray(opts))  setDbOptions(opts);
+    }).catch(() => {});
+  }, []);
+
+  // DB 상품이 로드되면 사용, 아직 없으면 pageContent 폴백
+  const liveProducts = dbProducts.length > 0 ? dbProducts : null;
 
   const scrollToProducts = () => productRef.current?.scrollIntoView({ behavior: "smooth" });
   const avgRating = reviews.length
@@ -296,69 +347,122 @@ export default function LandingPage() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-4">
-            {content.products.map((p) => (
-              <div
-                key={p.id}
-                className="rounded flex flex-col relative group"
-                style={{
-                  backgroundColor: p.featured ? "#1e1f23" : "#fdfdf8",
-                  border: p.featured ? "none" : "1px solid #bfc1b7",
-                  borderRadius: "6px",
-                  padding: "28px",
-                  boxShadow: p.featured ? "0px 25px 50px -12px rgba(0,0,0,0.25)" : "none",
-                }}
-              >
-                {p.badge && (
-                  <span className="absolute top-5 right-5 text-xs font-bold px-2.5 py-1 rounded" style={{ backgroundColor: "#F54E00", color: "#fdfdf8", borderRadius: "9999px" }}>
-                    {p.badge}
-                  </span>
-                )}
-
-                <div className="mb-6">
-                  <p className="text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: p.featured ? "rgba(253,253,248,0.4)" : "#9ea096" }}>{p.subtitle}</p>
-                  <h3 className="font-bold" style={{ fontSize: "1.5rem", fontWeight: 700, color: p.featured ? "#fdfdf8" : "#23251d" }}>{p.name}</h3>
-                </div>
-
-                <div className="mb-6">
-                  <span className="font-bold" style={{ fontSize: "2rem", fontWeight: 800, color: p.featured ? "#F54E00" : "#23251d" }}>
-                    {p.price.toLocaleString()}
-                  </span>
-                  <span className="text-sm ml-1" style={{ color: p.featured ? "rgba(253,253,248,0.4)" : "#9ea096" }}>원 / 1인</span>
-                </div>
-
-                <div className="flex items-center gap-1.5 mb-6">
-                  <Clock className="w-3.5 h-3.5" style={{ color: p.featured ? "rgba(253,253,248,0.5)" : "#9ea096" }} />
-                  <span className="text-sm" style={{ color: p.featured ? "rgba(253,253,248,0.6)" : "#65675e" }}>{p.duration}</span>
-                </div>
-
-                <div className="space-y-2 flex-1 mb-6">
-                  {p.features.map((f) => (
-                    <div key={f} className="flex items-start gap-2">
-                      <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: p.featured ? "#F54E00" : "#4d4f46" }} />
-                      <span className="text-sm" style={{ color: p.featured ? "rgba(253,253,248,0.8)" : "#4d4f46" }}>{f}</span>
+            {liveProducts
+              ? /* ── DB 상품 (실시간) ─────────────────── */ liveProducts.map((p) => {
+                  const featured    = p.is_featured;
+                  const duration    = p.duration_min ? `약 ${p.duration_min}분` : "";
+                  const features    = Array.isArray(p.features) && p.features.length > 0 ? p.features : [];
+                  const optionLabel = makeOptionLabel(p.slug, dbProducts, dbOptions);
+                  return (
+                    <div
+                      key={p.slug}
+                      className="rounded flex flex-col relative group"
+                      style={{
+                        backgroundColor: featured ? "#1e1f23" : "#fdfdf8",
+                        border: featured ? "none" : "1px solid #bfc1b7",
+                        borderRadius: "6px",
+                        padding: "28px",
+                        boxShadow: featured ? "0px 25px 50px -12px rgba(0,0,0,0.25)" : "none",
+                      }}
+                    >
+                      {p.badge && (
+                        <span className="absolute top-5 right-5 text-xs font-bold px-2.5 py-1 rounded" style={{ backgroundColor: "#F54E00", color: "#fdfdf8", borderRadius: "9999px" }}>
+                          {p.badge}
+                        </span>
+                      )}
+                      <div className="mb-6">
+                        <p className="text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: featured ? "rgba(253,253,248,0.4)" : "#9ea096" }}>{p.subtitle}</p>
+                        <h3 className="font-bold" style={{ fontSize: "1.5rem", fontWeight: 700, color: featured ? "#fdfdf8" : "#23251d" }}>{p.name}</h3>
+                      </div>
+                      <div className="mb-6">
+                        <span className="font-bold" style={{ fontSize: "2rem", fontWeight: 800, color: featured ? "#F54E00" : "#23251d" }}>
+                          {p.price.toLocaleString()}
+                        </span>
+                        <span className="text-sm ml-1" style={{ color: featured ? "rgba(253,253,248,0.4)" : "#9ea096" }}>원 / 1인</span>
+                      </div>
+                      {duration && (
+                        <div className="flex items-center gap-1.5 mb-6">
+                          <Clock className="w-3.5 h-3.5" style={{ color: featured ? "rgba(253,253,248,0.5)" : "#9ea096" }} />
+                          <span className="text-sm" style={{ color: featured ? "rgba(253,253,248,0.6)" : "#65675e" }}>{duration}</span>
+                        </div>
+                      )}
+                      <div className="space-y-2 flex-1 mb-6">
+                        {features.map((f) => (
+                          <div key={f} className="flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: featured ? "#F54E00" : "#4d4f46" }} />
+                            <span className="text-sm" style={{ color: featured ? "rgba(253,253,248,0.8)" : "#4d4f46" }}>{f}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {optionLabel && (
+                        <p className="text-xs mb-4 px-3 py-2 rounded" style={{ color: featured ? "rgba(253,253,248,0.5)" : "#9ea096", backgroundColor: featured ? "rgba(253,253,248,0.06)" : "#eeefe9", borderRadius: "4px" }}>
+                          + 옵션: {optionLabel}
+                        </p>
+                      )}
+                      <button
+                        onClick={() => router.push(`/booking?product=${p.slug}`)}
+                        className="w-full py-3 text-sm font-semibold transition-opacity hover:opacity-70 active:scale-95"
+                        style={{ backgroundColor: featured ? "#F54E00" : "#1e1f23", color: "#fdfdf8", borderRadius: "6px" }}
+                      >
+                        이 상품으로 예약
+                      </button>
                     </div>
-                  ))}
-                </div>
-
-                {p.optionLabel && (
-                  <p className="text-xs mb-4 px-3 py-2 rounded" style={{ color: p.featured ? "rgba(253,253,248,0.5)" : "#9ea096", backgroundColor: p.featured ? "rgba(253,253,248,0.06)" : "#eeefe9", borderRadius: "4px" }}>
-                    + 옵션: {p.optionLabel}
-                  </p>
-                )}
-
-                <button
-                  onClick={() => router.push(`/booking?product=${p.id}`)}
-                  className="w-full py-3 text-sm font-semibold transition-opacity hover:opacity-70 active:scale-95"
-                  style={{
-                    backgroundColor: p.featured ? "#F54E00" : "#1e1f23",
-                    color: "#fdfdf8",
-                    borderRadius: "6px",
-                  }}
-                >
-                  이 상품으로 예약
-                </button>
-              </div>
-            ))}
+                  );
+                })
+              : /* ── pageContent 폴백 (DB 로딩 전) ──── */ content.products.map((p) => (
+                  <div
+                    key={p.id}
+                    className="rounded flex flex-col relative group"
+                    style={{
+                      backgroundColor: p.featured ? "#1e1f23" : "#fdfdf8",
+                      border: p.featured ? "none" : "1px solid #bfc1b7",
+                      borderRadius: "6px",
+                      padding: "28px",
+                      boxShadow: p.featured ? "0px 25px 50px -12px rgba(0,0,0,0.25)" : "none",
+                    }}
+                  >
+                    {p.badge && (
+                      <span className="absolute top-5 right-5 text-xs font-bold px-2.5 py-1 rounded" style={{ backgroundColor: "#F54E00", color: "#fdfdf8", borderRadius: "9999px" }}>
+                        {p.badge}
+                      </span>
+                    )}
+                    <div className="mb-6">
+                      <p className="text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: p.featured ? "rgba(253,253,248,0.4)" : "#9ea096" }}>{p.subtitle}</p>
+                      <h3 className="font-bold" style={{ fontSize: "1.5rem", fontWeight: 700, color: p.featured ? "#fdfdf8" : "#23251d" }}>{p.name}</h3>
+                    </div>
+                    <div className="mb-6">
+                      <span className="font-bold" style={{ fontSize: "2rem", fontWeight: 800, color: p.featured ? "#F54E00" : "#23251d" }}>
+                        {p.price.toLocaleString()}
+                      </span>
+                      <span className="text-sm ml-1" style={{ color: p.featured ? "rgba(253,253,248,0.4)" : "#9ea096" }}>원 / 1인</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mb-6">
+                      <Clock className="w-3.5 h-3.5" style={{ color: p.featured ? "rgba(253,253,248,0.5)" : "#9ea096" }} />
+                      <span className="text-sm" style={{ color: p.featured ? "rgba(253,253,248,0.6)" : "#65675e" }}>{p.duration}</span>
+                    </div>
+                    <div className="space-y-2 flex-1 mb-6">
+                      {p.features.map((f) => (
+                        <div key={f} className="flex items-start gap-2">
+                          <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: p.featured ? "#F54E00" : "#4d4f46" }} />
+                          <span className="text-sm" style={{ color: p.featured ? "rgba(253,253,248,0.8)" : "#4d4f46" }}>{f}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {p.optionLabel && (
+                      <p className="text-xs mb-4 px-3 py-2 rounded" style={{ color: p.featured ? "rgba(253,253,248,0.5)" : "#9ea096", backgroundColor: p.featured ? "rgba(253,253,248,0.06)" : "#eeefe9", borderRadius: "4px" }}>
+                        + 옵션: {p.optionLabel}
+                      </p>
+                    )}
+                    <button
+                      onClick={() => router.push(`/booking?product=${p.id}`)}
+                      className="w-full py-3 text-sm font-semibold transition-opacity hover:opacity-70 active:scale-95"
+                      style={{ backgroundColor: p.featured ? "#F54E00" : "#1e1f23", color: "#fdfdf8", borderRadius: "6px" }}
+                    >
+                      이 상품으로 예약
+                    </button>
+                  </div>
+                ))
+            }
           </div>
         </div>
       </section>

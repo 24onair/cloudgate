@@ -355,28 +355,18 @@ export default function PilotPortalPage() {
   const [cumulFrom, setCumulFrom]             = useState(ALL_SDAYS[0]?.date ?? "2026-03-01");
   const [cumulTo, setCumulTo]                 = useState(ALL_SDAYS[ALL_SDAYS.length - 1]?.date ?? "2026-05-08");
 
-  // ── 파일럿 ID 로드 (localStorage → API fallback)
+  // ── 파일럿 ID 로드 (세션 쿠키 → /api/pilot/me)
   useEffect(() => {
-    const storedId = typeof window !== "undefined"
-      ? localStorage.getItem("gureum_pilot_id")
-      : null;
-    if (storedId) {
-      setPilotId(storedId);
-    } else {
-      fetch("/api/pilots?status=active")
-        .then((r) => r.json())
-        .then((pilots: DbPilot[]) => {
-          if (pilots.length > 0) {
-            const p = pilots[0];
-            setPilotId(p.id);
-            if (typeof window !== "undefined") {
-              localStorage.setItem("gureum_pilot_id", p.id);
-            }
-          }
-        })
-        .catch(console.error);
-    }
-  }, []);
+    fetch("/api/pilot/me")
+      .then((r) => {
+        if (!r.ok) { router.replace("/pilot/login"); return null; }
+        return r.json();
+      })
+      .then((pilot: DbPilot | null) => {
+        if (pilot) setPilotId(pilot.id);
+      })
+      .catch(() => router.replace("/pilot/login"));
+  }, [router]);
 
   // ── 파일럿 정보 로드
   useEffect(() => {
@@ -1617,8 +1607,8 @@ export default function PilotPortalPage() {
           <button
             onClick={() => {
               if (confirm(`${pilotName} 파일럿으로 로그인 중입니다.\n로그아웃하시겠습니까?`)) {
-                localStorage.removeItem("gureum_pilot_id");
-                router.replace("/pilot/login");
+                fetch("/api/pilot/logout", { method: "POST" })
+                  .finally(() => router.replace("/pilot/login"));
               }
             }}
             className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white transition-opacity active:opacity-70"

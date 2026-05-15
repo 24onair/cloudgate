@@ -67,6 +67,8 @@ interface Pilot {
   maxFlightsPerDay: number;
   schedule: MonthSchedule;
   memo: string;
+  // 파일럿 포털 PIN
+  pin: string;
   // 사진
   photoUrl?: string;
   // 퇴직 관련
@@ -120,6 +122,7 @@ function mapDbPilot(p: any): Pilot {
     flightsToday: p.flights_today ?? 0,
     maxFlightsPerDay: p.max_flights_per_day ?? 6,
     memo: p.memo ?? "",
+    pin: p.pin ?? "0000",
     photoUrl: p.photo_url ?? undefined,
     active: p.status !== "inactive",
     inactiveReason: p.inactive_reason as InactiveReason | undefined,
@@ -405,6 +408,9 @@ function DetailPanel({
   const [name,  setName]  = useState(pilot.name);
   const [phone, setPhone] = useState(pilot.phone);
   const [email, setEmail] = useState(pilot.email ?? "");
+  const [pin,   setPin]   = useState(pilot.pin ?? "0000");
+  const [pinSaving, setPinSaving] = useState(false);
+  const [pinSaved,  setPinSaved]  = useState(false);
   const [showDeactivate, setShowDeactivate] = useState(false);
 
   // 상세 패널 달력 월 상태 (동적 현재 월 기준)
@@ -435,6 +441,19 @@ function DetailPanel({
     setSaving(false);
     setEditMode(false);
     onUpdate?.({ name: name.trim() || pilot.name, phone: phone.trim() || pilot.phone, email: email.trim() });
+  }
+
+  async function handlePinSave() {
+    if (!pin.trim() || pin.length < 4) return;
+    setPinSaving(true);
+    await fetch(`/api/pilots/${pilot.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin: pin.trim() }),
+    });
+    setPinSaving(false);
+    setPinSaved(true);
+    setTimeout(() => setPinSaved(false), 2000);
   }
 
   // 자격증 로컬 상태 (편집 후 DB 저장)
@@ -612,6 +631,33 @@ function DetailPanel({
             ) : (
               <p className="text-sm text-gray-600 bg-gray-50 rounded-xl px-3 py-2">{memo}</p>
             )}
+          </section>
+
+          {/* 파일럿 포털 PIN */}
+          <section>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">포털 PIN</h3>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={8}
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={(e) => { if (e.key === "Enter") handlePinSave(); }}
+                className="w-32 text-sm px-2.5 py-1.5 rounded-lg border border-gray-200 font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-300"
+                style={{ color: "#0D2B52" }}
+                placeholder="0000"
+              />
+              <button
+                onClick={handlePinSave}
+                disabled={pinSaving || pin.length < 4}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50 transition-colors"
+                style={{ backgroundColor: pinSaved ? "#10B981" : "#0D2B52" }}
+              >
+                {pinSaved ? "저장됨 ✓" : pinSaving ? "저장 중..." : "변경"}
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1.5">파일럿이 포털 로그인에 사용합니다 (기본값: 0000)</p>
           </section>
 
           {/* 자격증 */}
@@ -1194,6 +1240,7 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [joinDate, setJoinDate] = useState("");
+  const [newPin, setNewPin] = useState("0000");
   const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
   // 자격 · 보험
   const [licenseNo, setLicenseNo] = useState("");
@@ -1238,6 +1285,7 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
         photo_url: photo ?? null,
         memo: reason.trim() || null,
         status: "active",
+        pin: newPin.trim() || "0000",
       }),
     });
     if (!res.ok) {
@@ -1350,6 +1398,20 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
                   className={inputCls}
                   style={inputStyle}
                 />
+              </div>
+              <div>
+                <label className={labelCls}>포털 PIN</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={8}
+                  placeholder="0000"
+                  value={newPin}
+                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+                  className={`${inputCls} font-mono tracking-widest w-32`}
+                  style={inputStyle}
+                />
+                <p className="text-xs text-gray-400 mt-1">파일럿 포털 로그인 PIN (기본 0000)</p>
               </div>
             </div>
           </div>

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// ── 공통 HMAC 검증 ─────────────────────────────────────────────────
 async function verifyToken(token: string, secret: string): Promise<boolean> {
   const parts = token.split(".");
   if (parts.length !== 2) return false;
-  const [randHex, sigHex] = parts;
+  const [payload, sigHex] = parts;
 
   try {
     const key = await crypto.subtle.importKey(
@@ -13,7 +14,7 @@ async function verifyToken(token: string, secret: string): Promise<boolean> {
       false,
       ["sign"]
     );
-    const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(randHex));
+    const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
     const expectedHex = Array.from(new Uint8Array(sig))
       .map(b => b.toString(16).padStart(2, "0")).join("");
 
@@ -25,16 +26,23 @@ async function verifyToken(token: string, secret: string): Promise<boolean> {
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const secret = process.env.SESSION_SECRET ?? "dev-secret-change-in-production";
 
+  // ── 어드민 경로 보호 ──────────────────────────────────────────────
   if (pathname === "/admin/login") return NextResponse.next();
-
   if (pathname.startsWith("/admin")) {
     const session = req.cookies.get("gureum_admin_session");
-    const secret  = process.env.SESSION_SECRET ?? "dev-secret-change-in-production";
-
     if (!session?.value || !(await verifyToken(session.value, secret))) {
-      const loginUrl = new URL("/admin/login", req.url);
-      return NextResponse.redirect(loginUrl);
+      return NextResponse.redirect(new URL("/admin/login", req.url));
+    }
+  }
+
+  // ── 파일럿 포털 경로 보호 ─────────────────────────────────────────
+  if (pathname === "/pilot/login") return NextResponse.next();
+  if (pathname.startsWith("/pilot")) {
+    const session = req.cookies.get("gureum_pilot_session");
+    if (!session?.value || !(await verifyToken(session.value, secret))) {
+      return NextResponse.redirect(new URL("/pilot/login", req.url));
     }
   }
 
@@ -42,5 +50,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/admin/:path*", "/pilot/:path*"],
 };

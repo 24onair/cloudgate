@@ -193,11 +193,11 @@ function formatPrice(n: number) {
 function statusConfig(status: FlightStatus) {
   switch (status) {
     case "waiting":
-      return { label: "대기 중",   bg: "#eeefe9", text: "#65675e", border: "#bfc1b7", dot: "#9ea096" };
+      return { label: "파일럿배정", bg: "#eeefe9", text: "#65675e", border: "#bfc1b7", dot: "#9ea096" };
     case "flying":
-      return { label: "비행 중",   bg: "#FFF7ED", text: "#C2410C", border: "#FED7AA", dot: "#F54E00" };
+      return { label: "비행",       bg: "#FFF7ED", text: "#C2410C", border: "#FED7AA", dot: "#F54E00" };
     case "completed":
-      return { label: "완료",      bg: "#F0FDF4", text: "#15803D", border: "#BBF7D0", dot: "#22C55E" };
+      return { label: "비행완료",   bg: "#F0FDF4", text: "#15803D", border: "#BBF7D0", dot: "#22C55E" };
   }
 }
 

@@ -121,22 +121,22 @@ function mapBookingToFlight(b: any): Flight {
 
 // ── 상수 ────────────────────────────────────────────────────────
 const STATUS_CFG: Record<FlightStatus, { label: string; color: string; bg: string; dot: string }> = {
-  confirmed:  { label: "예약확정", color: "#6B7280", bg: "#F3F4F6", dot: "#9CA3AF" },
-  waiting:    { label: "대기중",   color: "#2A7AE2", bg: "#EFF6FF", dot: "#2A7AE2" },
-  boarding:   { label: "탑승중",   color: "#F59E0B", bg: "#FFFBEB", dot: "#F59E0B" },
-  flying:     { label: "비행중",   color: "#FF8A00", bg: "#FFF7ED", dot: "#FF8A00" },
-  landed:     { label: "착륙",     color: "#8B5CF6", bg: "#F5F3FF", dot: "#8B5CF6" },
-  completed:  { label: "완료",     color: "#10B981", bg: "#ECFDF5", dot: "#10B981" },
-  cancelled:  { label: "취소",     color: "#EF4444", bg: "#FEF2F2", dot: "#EF4444" },
+  confirmed:  { label: "대기",       color: "#6B7280", bg: "#F3F4F6", dot: "#9CA3AF" },
+  waiting:    { label: "파일럿배정", color: "#2A7AE2", bg: "#EFF6FF", dot: "#2A7AE2" },
+  boarding:   { label: "비행",       color: "#F59E0B", bg: "#FFFBEB", dot: "#F59E0B" },
+  flying:     { label: "비행",       color: "#FF8A00", bg: "#FFF7ED", dot: "#FF8A00" },
+  landed:     { label: "비행완료",   color: "#8B5CF6", bg: "#F5F3FF", dot: "#8B5CF6" },
+  completed:  { label: "비행완료",   color: "#10B981", bg: "#ECFDF5", dot: "#10B981" },
+  cancelled:  { label: "취소",       color: "#EF4444", bg: "#FEF2F2", dot: "#EF4444" },
 };
 
 // 다음 상태 + 버튼 텍스트
 const NEXT_ACTION: Partial<Record<FlightStatus, { next: FlightStatus; label: string; color: string; dbStatus?: DbBookingStatus }>> = {
-  confirmed: { next: "waiting",   label: "체크인",    color: "#2A7AE2" },
-  waiting:   { next: "boarding",  label: "탑승 시작", color: "#F59E0B" },
-  boarding:  { next: "flying",    label: "비행 시작", color: "#FF8A00", dbStatus: "flying" },
-  flying:    { next: "landed",    label: "착륙완료",  color: "#8B5CF6" },
-  landed:    { next: "completed", label: "처리완료",  color: "#10B981", dbStatus: "completed" },
+  confirmed: { next: "waiting",   label: "파일럿 배정", color: "#2A7AE2" },
+  waiting:   { next: "boarding",  label: "비행 시작",   color: "#F59E0B" },
+  boarding:  { next: "flying",    label: "비행 중",     color: "#FF8A00", dbStatus: "flying" },
+  flying:    { next: "landed",    label: "비행 완료",   color: "#8B5CF6" },
+  landed:    { next: "completed", label: "완료 처리",   color: "#10B981", dbStatus: "completed" },
 };
 
 function nowStr() {
@@ -536,12 +536,12 @@ export default function OpsPage() {
   const wCfg = GRADE_CFG[grade];
 
   const FILTER_TABS: { key: FlightStatus | "all"; label: string; count: number }[] = [
-    { key: "all",       label: "전체",   count: flights.length },
-    { key: "flying",    label: "비행중", count: stats.flying },
-    { key: "boarding",  label: "탑승중", count: stats.boarding },
-    { key: "waiting",   label: "대기",   count: stats.waiting + stats.confirmed },
-    { key: "completed", label: "완료",   count: stats.completed },
-    { key: "cancelled", label: "취소",   count: stats.cancelled },
+    { key: "all",       label: "전체",       count: flights.length },
+    { key: "confirmed", label: "대기",       count: stats.confirmed },
+    { key: "waiting",   label: "파일럿배정", count: stats.waiting },
+    { key: "flying",    label: "비행",       count: stats.flying + stats.boarding },
+    { key: "completed", label: "비행완료",   count: stats.completed + stats.landed },
+    { key: "cancelled", label: "취소",       count: stats.cancelled },
   ];
 
   return (
@@ -596,10 +596,10 @@ export default function OpsPage() {
 
         {/* KPI */}
         {[
-          { label: "비행중", value: stats.flying,   icon: Plane,         color: "#FF8A00", bg: "#FFF7ED", pulse: stats.flying > 0 },
-          { label: "탑승중", value: stats.boarding, icon: Users,         color: "#F59E0B", bg: "#FFFBEB", pulse: false },
-          { label: "대기",   value: stats.waiting + stats.confirmed, icon: Clock, color: "#2A7AE2", bg: "#EFF6FF", pulse: false },
-          { label: "완료",   value: stats.completed, icon: CheckCircle2, color: "#10B981", bg: "#ECFDF5", pulse: false },
+          { label: "비행",       value: stats.flying + stats.boarding, icon: Plane,         color: "#FF8A00", bg: "#FFF7ED", pulse: stats.flying > 0 },
+          { label: "파일럿배정", value: stats.waiting,                 icon: Users,         color: "#2A7AE2", bg: "#EFF6FF", pulse: false },
+          { label: "대기",       value: stats.confirmed,               icon: Clock,         color: "#6B7280", bg: "#F3F4F6", pulse: false },
+          { label: "비행완료",   value: stats.completed + stats.landed, icon: CheckCircle2, color: "#10B981", bg: "#ECFDF5", pulse: false },
         ].map((card) => {
           const Icon = card.icon;
           return (

@@ -83,11 +83,11 @@ const GRADE_CFG = {
 
 // ─── 상태 배지 ────────────────────────────────────────────────────
 const STATUS_CFG: Record<UIStatus, { label: string; color: string; bg: string; dot: string }> = {
-  completed: { label: "완료",   color: "#15803D", bg: "#DCFCE7", dot: "#22C55E" },
-  flying:    { label: "비행중", color: "#C2410C", bg: "#FFF7ED", dot: "#FF8A00" },
-  waiting:   { label: "대기중", color: "#0369A1", bg: "#E0F2FE", dot: "#0EA5E9" },
-  confirmed: { label: "확정",   color: "#1D4ED8", bg: "#DBEAFE", dot: "#3B82F6" },
-  cancelled: { label: "취소",   color: "#9CA3AF", bg: "#F3F4F6", dot: "#D1D5DB" },
+  completed: { label: "비행완료",   color: "#15803D", bg: "#DCFCE7", dot: "#22C55E" },
+  flying:    { label: "비행",       color: "#C2410C", bg: "#FFF7ED", dot: "#FF8A00" },
+  waiting:   { label: "파일럿배정", color: "#0369A1", bg: "#E0F2FE", dot: "#0EA5E9" },
+  confirmed: { label: "대기",       color: "#1D4ED8", bg: "#DBEAFE", dot: "#3B82F6" },
+  cancelled: { label: "취소",       color: "#9CA3AF", bg: "#F3F4F6", dot: "#D1D5DB" },
 };
 
 function StatusBadge({ status }: { status: UIStatus }) {

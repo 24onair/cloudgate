@@ -47,11 +47,11 @@ interface ApiBooking {
 // ─── Status Config ────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<BookingStatus, { label: string; color: string; bg: string; dot: string }> = {
-  pending:   { label: "대기",   color: "#D97706", bg: "#FEF3C7", dot: "#F59E0B" },
-  confirmed: { label: "확정",   color: "#1D4ED8", bg: "#DBEAFE", dot: "#3B82F6" },
-  flying:    { label: "비행중", color: "#C2410C", bg: "#FFF7ED", dot: "#FF8A00" },
-  completed: { label: "완료",   color: "#15803D", bg: "#DCFCE7", dot: "#22C55E" },
-  cancelled: { label: "취소",   color: "#9CA3AF", bg: "#F9FAFB", dot: "#D1D5DB" },
+  pending:   { label: "대기",       color: "#D97706", bg: "#FEF3C7", dot: "#F59E0B" },
+  confirmed: { label: "파일럿배정", color: "#1D4ED8", bg: "#DBEAFE", dot: "#3B82F6" },
+  flying:    { label: "비행",       color: "#C2410C", bg: "#FFF7ED", dot: "#FF8A00" },
+  completed: { label: "비행완료",   color: "#15803D", bg: "#DCFCE7", dot: "#22C55E" },
+  cancelled: { label: "취소",       color: "#9CA3AF", bg: "#F9FAFB", dot: "#D1D5DB" },
 };
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -68,12 +68,12 @@ const DATE_TABS = [
 ];
 
 const STATUS_FILTER_TABS: { label: string; value: BookingStatus | "all" }[] = [
-  { label: "전체",   value: "all" },
-  { label: "대기",   value: "pending" },
-  { label: "확정",   value: "confirmed" },
-  { label: "비행중", value: "flying" },
-  { label: "완료",   value: "completed" },
-  { label: "취소",   value: "cancelled" },
+  { label: "전체",       value: "all" },
+  { label: "대기",       value: "pending" },
+  { label: "파일럿배정", value: "confirmed" },
+  { label: "비행",       value: "flying" },
+  { label: "비행완료",   value: "completed" },
+  { label: "취소",       value: "cancelled" },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -203,11 +203,11 @@ function DetailPanel({
 
   const nextActions: { label: string; status: BookingStatus; color: string }[] = [];
   if (booking.status === "pending")
-    nextActions.push({ label: "예약 확정", status: "confirmed", color: "#2A7AE2" });
+    nextActions.push({ label: "파일럿 배정", status: "confirmed", color: "#2A7AE2" });
   if (booking.status === "confirmed")
     nextActions.push({ label: "비행 시작", status: "flying", color: "#FF8A00" });
   if (booking.status === "flying")
-    nextActions.push({ label: "착륙 완료 → 완료 처리", status: "completed", color: "#15803D" });
+    nextActions.push({ label: "비행 완료 처리", status: "completed", color: "#15803D" });
 
   const optionNames = (booking.options ?? []).map((o) =>
     typeof o === "string" ? o : o.name
@@ -554,11 +554,11 @@ export default function BookingsPage() {
         {/* Stats */}
         <div className="grid grid-cols-5 gap-3 mb-5">
           {[
-            { label: "총 예약",  value: stats.total,     color: "#0D2B52" },
-            { label: "대기/확정", value: stats.waiting,   color: "#0369A1" },
-            { label: "비행 중",  value: stats.flying,    color: "#FF8A00" },
-            { label: "완료",     value: stats.completed, color: "#15803D" },
-            { label: "취소",     value: stats.cancelled, color: "#9CA3AF" },
+            { label: "총 예약",   value: stats.total,     color: "#0D2B52" },
+            { label: "대기",      value: stats.waiting,   color: "#6B7280" },
+            { label: "비행",      value: stats.flying,    color: "#FF8A00" },
+            { label: "비행완료",  value: stats.completed, color: "#15803D" },
+            { label: "취소",      value: stats.cancelled, color: "#9CA3AF" },
           ].map((s) => (
             <div key={s.label} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
               <p className="text-2xl font-bold" style={{ color: s.color }}>

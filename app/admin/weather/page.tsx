@@ -652,12 +652,13 @@ export default function WeatherPage() {
             >
               <Mountain size={13} />
               {site.name}
-              <button
+              <span
+                role="button"
                 onClick={(e) => { e.stopPropagation(); setEditSite(site); }}
-                className="ml-0.5 opacity-60 hover:opacity-100"
+                className="ml-0.5 opacity-60 hover:opacity-100 cursor-pointer"
               >
                 <Edit3 size={11} />
-              </button>
+              </span>
             </button>
           ))}
         </div>

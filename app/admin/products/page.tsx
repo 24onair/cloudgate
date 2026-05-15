@@ -32,30 +32,17 @@ function genId() {
   return `prod_${Date.now().toString(36)}`;
 }
 
-// ── 이미지 리사이즈 (canvas, max 900px, JPEG 0.75) ──────────────
-function resizeImage(file: File): Promise<string> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const MAX = 900;
-        let w = img.width;
-        let h = img.height;
-        if (w > MAX || h > MAX) {
-          if (w > h) { h = Math.round((h * MAX) / w); w = MAX; }
-          else { w = Math.round((w * MAX) / h); h = MAX; }
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/jpeg", 0.75));
-      };
-      img.src = e.target!.result as string;
-    };
-    reader.readAsDataURL(file);
-  });
+// ── 이미지 업로드 헬퍼 ───────────────────────────────────────────
+async function uploadImage(file: File, folder: string): Promise<string | null> {
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("folder", folder);
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    if (!res.ok) return null;
+    const { url } = await res.json() as { url: string };
+    return url;
+  } catch { return null; }
 }
 
 // ── 빈 상품 템플릿 ───────────────────────────────────────────────
@@ -100,9 +87,10 @@ function ProductModal({
   }
 
   async function handleImageFile(idx: number, file: File) {
-    const dataUrl = await resizeImage(file);
+    const url = await uploadImage(file, "products");
+    if (!url) return;
     const next = [...(form.images ?? []), "", "", ""].slice(0, 3) as string[];
-    next[idx] = dataUrl;
+    next[idx] = url;
     set("images", next.filter((_, i) => i < 3));
   }
 

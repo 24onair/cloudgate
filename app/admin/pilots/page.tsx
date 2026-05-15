@@ -1171,6 +1171,19 @@ function TeamCalendar({ allSchedules, allNotes, activePilots }: { allSchedules: 
   );
 }
 
+// ── 이미지 업로드 헬퍼 ──────────────────────────────────────────
+async function uploadImage(file: File, folder: string): Promise<string | null> {
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("folder", folder);
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    if (!res.ok) return null;
+    const { url } = await res.json() as { url: string };
+    return url;
+  } catch { return null; }
+}
+
 // ── 등록 모달 ────────────────────────────────────────────────────
 function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: () => void }) {
   const defaultShare = typeof window !== "undefined"
@@ -1188,6 +1201,7 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
   const [insuranceExpiry, setInsuranceExpiry] = useState("");
   // 사진
   const [photo, setPhoto] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   // 정산
   const [useCustomShare, setUseCustomShare] = useState(false);
@@ -1198,25 +1212,13 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
   function handlePhone(raw: string) { setPhone(formatPhone(raw)); }
 
   // 사진 선택
-  function handlePhoto(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handlePhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const MAX = 400;
-      let { width, height } = img;
-      if (width > MAX || height > MAX) {
-        if (width > height) { height = Math.round((height * MAX) / width); width = MAX; }
-        else { width = Math.round((width * MAX) / height); height = MAX; }
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = width; canvas.height = height;
-      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
-      setPhoto(canvas.toDataURL("image/jpeg", 0.75));
-    };
-    img.src = url;
+    setUploading(true);
+    const url = await uploadImage(file, "pilots");
+    setUploading(false);
+    if (url) setPhoto(url);
   }
 
   async function submit() {
@@ -1271,10 +1273,13 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
             <button
               onClick={() => fileRef.current?.click()}
-              className="relative w-24 h-24 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1.5 overflow-hidden hover:border-gray-400 transition-colors group"
+              disabled={uploading}
+              className="relative w-24 h-24 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1.5 overflow-hidden hover:border-gray-400 transition-colors group disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ backgroundColor: photo ? "transparent" : "#F9FAFB" }}
             >
-              {photo ? (
+              {uploading ? (
+                <span className="text-xs text-gray-400">업로드 중…</span>
+              ) : photo ? (
                 <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={photo} alt="프로필" className="absolute inset-0 w-full h-full object-cover" />
@@ -1442,10 +1447,11 @@ function AddPilotModal({ onClose, onSaved }: { onClose: () => void; onSaved?: ()
           </button>
           <button
             onClick={submit}
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white"
+            disabled={uploading}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
             style={{ background: "#0D2B52" }}
           >
-            등록
+            {uploading ? "업로드 중…" : "등록"}
           </button>
         </div>
       </div>

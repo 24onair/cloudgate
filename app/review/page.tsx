@@ -6,24 +6,17 @@ import { Star, Upload, X, CheckCircle2, Wind, ArrowLeft, Image as ImageIcon } fr
 import { addReview } from "@/lib/reviewStore";
 import { usePageContent } from "@/lib/pageContentStore";
 
-// ── 이미지 압축 ──────────────────────────────────────────────────
-function compressImage(file: File, maxPx = 1200, quality = 0.75): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      const canvas = document.createElement("canvas");
-      canvas.width = w; canvas.height = h;
-      canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL("image/jpeg", quality));
-    };
-    img.onerror = reject;
-    img.src = url;
-  });
+// ── 이미지 업로드 헬퍼 ──────────────────────────────────────────
+async function uploadImage(file: File, folder: string): Promise<string | null> {
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("folder", folder);
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    if (!res.ok) return null;
+    const { url } = await res.json() as { url: string };
+    return url;
+  } catch { return null; }
 }
 
 // ── 별점 선택기 ──────────────────────────────────────────────────
@@ -116,10 +109,8 @@ function ReviewForm() {
 
   async function handleImageAdd(index: number, file: File) {
     setLoading(true);
-    try {
-      const compressed = await compressImage(file);
-      setImages((prev) => prev.map((img, i) => i === index ? compressed : img));
-    } catch { /* ignore */ }
+    const url = await uploadImage(file, "reviews");
+    if (url) setImages((prev) => prev.map((img, i) => i === index ? url : img));
     setLoading(false);
   }
 

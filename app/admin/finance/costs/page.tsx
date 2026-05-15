@@ -283,12 +283,24 @@ export default function CostsPage() {
   const [newCat, setNewCat] = useState({ label: "", color: COLOR_OPTIONS[0], isDefault: false });
   const [newCatError, setNewCatError] = useState("");
 
+  // ── 이미지 업로드 헬퍼 ───────────────────────────────────────────
+  async function uploadImage(file: File, folder: string): Promise<string | null> {
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("folder", folder);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      if (!res.ok) return null;
+      const { url } = await res.json() as { url: string };
+      return url;
+    } catch { return null; }
+  }
+
   // ── 영수증 처리 ───────────────────────────────────────────────
-  const handleFile = useCallback((file: File) => {
+  const handleFile = useCallback(async (file: File) => {
     if (!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = (e) => setReceiptPreview(e.target?.result as string);
-    reader.readAsDataURL(file);
+    const url = await uploadImage(file, "receipts");
+    if (url) setReceiptPreview(url);
   }, []);
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();

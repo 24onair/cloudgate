@@ -15,29 +15,17 @@ import {
   PageContent, ProductItem, SafetyItem,
 } from "@/lib/pageContentStore";
 
-// ── 이미지 압축 (localStorage 용량 초과 방지) ──────────────────────
-function compressImage(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const MAX = 1920;
-      let { width, height } = img;
-      if (width > MAX || height > MAX) {
-        if (width > height) { height = Math.round((height * MAX) / width); width = MAX; }
-        else                { width  = Math.round((width  * MAX) / height); height = MAX; }
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = width; canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) { reject(new Error("canvas context unavailable")); return; }
-      ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL("image/jpeg", 0.75));
-    };
-    img.onerror = reject;
-    img.src = url;
-  });
+// ── 이미지 업로드 (/api/upload 경유) ─────────────────────────────
+async function uploadImage(file: File, folder: string): Promise<string | null> {
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("folder", folder);
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    if (!res.ok) return null;
+    const { url } = await res.json();
+    return url as string;
+  } catch { return null; }
 }
 
 // ── 로고 설정 카드 ────────────────────────────────────────────────
@@ -56,31 +44,11 @@ function LogoCard() {
     if (!file.type.startsWith("image/")) return;
     setProcessing(true);
     try {
-      // 로고는 최대 400px로 압축 (작고 선명하게)
-      const compressed = await new Promise<string>((resolve, reject) => {
-        const img = new Image();
-        const url = URL.createObjectURL(file);
-        img.onload = () => {
-          URL.revokeObjectURL(url);
-          const MAX = 400;
-          let { width, height } = img;
-          if (width > MAX || height > MAX) {
-            if (width > height) { height = Math.round((height * MAX) / width); width = MAX; }
-            else                { width  = Math.round((width  * MAX) / height); height = MAX; }
-          }
-          const canvas = document.createElement("canvas");
-          canvas.width = width; canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) { reject(new Error("canvas context unavailable")); return; }
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL("image/png", 1.0)); // PNG로 저장 (투명도 보존)
-        };
-        img.onerror = reject;
-        img.src = url;
-      });
-      setLogo({ imageDataUrl: compressed });
+      const url = await uploadImage(file, "logo");
+      if (!url) { alert("이미지 업로드에 실패했습니다."); return; }
+      setLogo({ imageDataUrl: url });
       flash();
-    } catch { alert("이미지 처리 중 오류가 발생했습니다."); }
+    } catch { alert("이미지 업로드 중 오류가 발생했습니다."); }
     finally   { setProcessing(false); }
   }, []);
 
@@ -422,13 +390,13 @@ function BgCard({ title, description, bg, onSet, onClear, preview }: BgCardProps
     if (!file.type.startsWith("image/")) return;
     setProcessing(true);
     try {
-      const compressed = await compressImage(file);
-      const bytes = Math.round((compressed.length * 3) / 4);
-      setSizeInfo(`${(bytes / 1024).toFixed(0)}KB 저장됨`);
-      onSet({ imageDataUrl: compressed, enabled: true, objectPosition: "50% 50%" });
+      const url = await uploadImage(file, "backgrounds");
+      if (!url) { alert("이미지 업로드에 실패했습니다."); return; }
+      setSizeInfo(null);
+      onSet({ imageDataUrl: url, enabled: true, objectPosition: "50% 50%" });
       flash();
     } catch {
-      alert("이미지 처리 중 오류가 발생했습니다.");
+      alert("이미지 업로드 중 오류가 발생했습니다.");
     } finally {
       setProcessing(false);
     }
@@ -468,7 +436,7 @@ function BgCard({ title, description, bg, onSet, onClear, preview }: BgCardProps
           {processing ? (
             <div className="border-2 border-blue-200 rounded-xl p-6 text-center bg-blue-50">
               <Loader2 size={24} className="mx-auto mb-1.5 text-blue-400 animate-spin" />
-              <p className="text-xs text-blue-500 font-medium">이미지 최적화 중…</p>
+              <p className="text-xs text-blue-500 font-medium">업로드 중…</p>
             </div>
           ) : bg.imageDataUrl ? (
             <FocalPointPicker
@@ -489,7 +457,7 @@ function BgCard({ title, description, bg, onSet, onClear, preview }: BgCardProps
             >
               <Upload size={22} className="mx-auto mb-1.5 text-gray-300" />
               <p className="text-xs text-gray-500">클릭 또는 드래그로 업로드</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">JPG, PNG, WEBP · 자동 최적화</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">JPG, PNG, WEBP</p>
             </div>
           )}
           <input

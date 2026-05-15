@@ -399,6 +399,11 @@ export default function OpsPage() {
     return "GREEN";
   }
 
+  // 로컬 UI 전용 상태 순서 (boarding/landed 는 DB에 없음)
+  const STATE_ORDER: Record<FlightStatus, number> = {
+    confirmed: 0, waiting: 1, boarding: 2, flying: 3, landed: 4, completed: 5, cancelled: 99,
+  };
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -410,19 +415,16 @@ export default function OpsPage() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data: any[] = await bRes.json();
         setFlights((prev) => {
-          // 이미 로컬에서 boarding/landed 상태로 진행된 항목은 서버 상태보다 로컬 상태 우선
-          const localOverrides: Record<string, FlightStatus> = {};
-          for (const f of prev) {
-            if (f.status === "boarding" || f.status === "landed") localOverrides[f.id] = f.status;
-          }
           return data.map((b) => {
             const mapped = mapBookingToFlight(b);
-            if (localOverrides[mapped.id]) {
-              // 기존 로컬 상태(takeoffAt, landedAt) 복원
-              const existing = prev.find((p) => p.id === mapped.id);
-              return { ...mapped, status: localOverrides[mapped.id], takeoffAt: existing?.takeoffAt ?? null, landedAt: existing?.landedAt ?? null };
+            const local  = prev.find((p) => p.id === mapped.id);
+            // 로컬 상태가 서버보다 앞서 있을 때만 로컬 유지
+            // (예: 어드민이 boarding 눌렀는데 DB엔 아직 waiting) → boarding 유지
+            // 파일럿이 DB에 flying 쓰면 서버(3) > 로컬 boarding(2) → 서버 상태 채택
+            if (local && STATE_ORDER[local.status] > STATE_ORDER[mapped.status]) {
+              return { ...mapped, status: local.status, takeoffAt: local.takeoffAt, landedAt: local.landedAt };
             }
-            return mapped;
+            return { ...mapped, takeoffAt: local?.takeoffAt ?? null, landedAt: local?.landedAt ?? null };
           });
         });
       }
@@ -438,7 +440,12 @@ export default function OpsPage() {
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // 초기 로드 + 30초 자동 폴링
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 30_000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
   // ── 상태 집계 ──
   const stats = useMemo(() => {

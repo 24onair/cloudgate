@@ -312,9 +312,16 @@ export default function PilotPortalPage() {
     }
   }, [pilotId]);
 
+  // 날짜 변경 시 즉시 로드 + 비행일정 탭에서 30초 폴링
   useEffect(() => {
     fetchFlightData(flightDate);
   }, [fetchFlightData, flightDate]);
+
+  useEffect(() => {
+    if (tab !== "today") return;
+    const interval = setInterval(() => fetchFlightData(flightDate), 30_000);
+    return () => clearInterval(interval);
+  }, [tab, flightDate, fetchFlightData]);
 
   // ── 날짜 이동
   function shiftFlightDate(delta: number) {

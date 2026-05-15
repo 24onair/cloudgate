@@ -388,7 +388,7 @@ export default function PilotPortalPage() {
         map[d] = { date: d, day: KR_DAYS[dow], count: 0, amount: 0 };
       }
       map[d].count  += 1;
-      map[d].amount += 15000;
+      map[d].amount += settlementRate;
     }
     return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
   })();
@@ -668,7 +668,7 @@ export default function PilotPortalPage() {
     if (selectedHistoryDate) {
       const daySummary = weekDaySummaries.find((x) => x.date === selectedHistoryDate);
       const detailCount  = historyDetailRecords.length;
-      const detailAmount = detailCount * 15000;
+      const detailAmount = detailCount * settlementRate;
       const dayLabel = (() => {
         const dow = new Date(selectedHistoryDate + "T00:00:00").getDay();
         return KR_DAYS[dow];
@@ -893,6 +893,7 @@ export default function PilotPortalPage() {
       working:  { label: "출근",   bg: "#DCFCE7", color: "#16A34A" },
       off:      { label: "휴무",   bg: "#FEE2E2", color: "#DC2626" },
       standby:  { label: "대기",   bg: "#FEF3C7", color: "#D97706" },
+      etc:      { label: "기타",   bg: "#EDE9FE", color: "#7C3AED" },
     };
 
     const [y, mo] = scheduleYearMonth.split("-").map(Number);
@@ -1430,7 +1431,7 @@ export default function PilotPortalPage() {
                 <p className="text-xs font-semibold mb-2" style={{ color: "#9ea096" }}>일 정산</p>
                 <div className="flex items-end gap-2 mb-3">
                   <p className="text-3xl font-bold" style={{ color: "#23251d" }}>{formatPrice(day.subtotal)}</p>
-                  <p className="text-sm mb-1" style={{ color: "#9ea096" }}>/ {day.count}건 × {formatPrice(15000)}</p>
+                  <p className="text-sm mb-1" style={{ color: "#9ea096" }}>/ {day.count}건 × {formatPrice(settlementRate)}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
@@ -1674,7 +1675,9 @@ export default function PilotPortalPage() {
   async function toggleScheduleDay(date: string) {
     if (!pilotId) return;
     const cur = scheduleData[date] ?? "working";
-    const next = cur === "working" ? "off" : cur === "off" ? "standby" : "working";
+    // "etc"(기타) 또는 알 수 없는 상태는 "working"으로 정규화 후 토글
+    const normalized = cur === "off" || cur === "standby" ? cur : "working";
+    const next = normalized === "working" ? "off" : normalized === "off" ? "standby" : "working";
     setScheduleData((prev) => ({ ...prev, [date]: next }));
     try {
       await fetch("/api/schedules", {

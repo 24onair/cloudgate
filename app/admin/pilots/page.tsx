@@ -2,7 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { useSchedules, useScheduleNotes, updatePilotSchedule, updatePilotNote, type AllSchedules } from "@/lib/scheduleStore";
+import { useSchedules, useScheduleNotes, updatePilotSchedule, updatePilotNote, invalidateScheduleCache, type AllSchedules } from "@/lib/scheduleStore";
 import { getSettlementConfig } from "@/lib/settlementStore";
 import {
   Plus,
@@ -412,6 +412,12 @@ function DetailPanel({
   const [pinSaving, setPinSaving] = useState(false);
   const [pinSaved,  setPinSaved]  = useState(false);
   const [showDeactivate, setShowDeactivate] = useState(false);
+
+  // 상세 패널 마운트 시 현재 월 캐시 무효화 → 파일럿 포털 변경사항 즉시 반영
+  useEffect(() => {
+    const thisMonth = `${TODAY_YEAR}-${String(TODAY_MONTH).padStart(2, "0")}`;
+    invalidateScheduleCache(thisMonth);
+  }, []);
 
   // 상세 패널 달력 월 상태 (동적 현재 월 기준)
   const [calYear, setCalYear] = useState(TODAY_YEAR);

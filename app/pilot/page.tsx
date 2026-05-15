@@ -215,7 +215,10 @@ export default function PilotPortalPage() {
   const [pilotId, setPilotId]     = useState<string | null>(null);
   const [pilotInfo, setPilotInfo] = useState<DbPilot | null>(null);
 
-  // ── 오늘 비행
+  // ── 비행일정 날짜 탐색
+  const [flightDate, setFlightDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  // ── 비행
   const [flights, setFlights]               = useState<MyFlight[]>([]);
   const [allTodayBookings, setAllTodayBookings] = useState<ApiBooking[]>([]);
   const [loadingFlights, setLoadingFlights] = useState(true);
@@ -289,12 +292,12 @@ export default function PilotPortalPage() {
       .catch(console.error);
   }, [pilotId]);
 
-  // ── 오늘 예약 로드 (내 배정 필터링)
-  const fetchTodayData = useCallback(async () => {
+  // ── 날짜별 예약 로드 (내 배정 필터링)
+  const fetchFlightData = useCallback(async (date: string) => {
     if (!pilotId) return;
-    const today = new Date().toISOString().slice(0, 10);
+    setLoadingFlights(true);
     try {
-      const res = await fetch(`/api/bookings?date=${today}`);
+      const res = await fetch(`/api/bookings?date=${date}`);
       const data: ApiBooking[] = await res.json();
       setAllTodayBookings(data);
       const mine = data.filter((b) =>
@@ -303,15 +306,24 @@ export default function PilotPortalPage() {
       );
       setFlights(mine.map(toMyFlight));
     } catch (err) {
-      console.error("오늘 예약 조회 실패:", err);
+      console.error("예약 조회 실패:", err);
     } finally {
       setLoadingFlights(false);
     }
   }, [pilotId]);
 
   useEffect(() => {
-    fetchTodayData();
-  }, [fetchTodayData]);
+    fetchFlightData(flightDate);
+  }, [fetchFlightData, flightDate]);
+
+  // ── 날짜 이동
+  function shiftFlightDate(delta: number) {
+    setFlightDate((prev) => {
+      const d = new Date(prev + "T00:00:00");
+      d.setDate(d.getDate() + delta);
+      return d.toISOString().slice(0, 10);
+    });
+  }
 
   // ── 주간 비행기록 로드
   const fetchWeekRecords = useCallback(async () => {
@@ -455,19 +467,62 @@ export default function PilotPortalPage() {
     }
   }
 
-  const today = new Date().toLocaleDateString("ko-KR", {
-    year: "numeric", month: "long", day: "numeric", weekday: "short",
-  });
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const KR_WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+  function formatFlightDate(d: string) {
+    const dt = new Date(d + "T00:00:00");
+    const mm = dt.getMonth() + 1;
+    const dd = dt.getDate();
+    const dow = KR_WEEKDAYS[dt.getDay()];
+    if (d === todayStr) return `오늘 (${mm}/${dd} ${dow})`;
+    const yesterday = new Date(todayStr + "T00:00:00");
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (d === yesterday.toISOString().slice(0, 10)) return `어제 (${mm}/${dd} ${dow})`;
+    const tomorrow = new Date(todayStr + "T00:00:00");
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (d === tomorrow.toISOString().slice(0, 10)) return `내일 (${mm}/${dd} ${dow})`;
+    return `${mm}월 ${dd}일 (${dow})`;
+  }
 
-  // ── Today Tab ───────────────────────────────────────────────────────────────
+  // ── Flight Tab ─────────────────────────────────────────────────────────────
   const TodayTab = () => (
     <div>
+      {/* 날짜 네비게이션 */}
+      <div className="flex items-center justify-between mb-4 px-1">
+        <button
+          onClick={() => shiftFlightDate(-1)}
+          className="w-9 h-9 flex items-center justify-center rounded-full transition-colors active:scale-95"
+          style={{ backgroundColor: "#e5e7e0" }}
+        >
+          <ChevronLeft className="w-5 h-5" style={{ color: "#4d4f46" }} />
+        </button>
+        <div className="text-center">
+          <p className="text-sm font-bold" style={{ color: "#23251d" }}>{formatFlightDate(flightDate)}</p>
+          {flightDate !== todayStr && (
+            <button
+              onClick={() => setFlightDate(todayStr)}
+              className="text-[11px] mt-0.5 underline"
+              style={{ color: "#9ea096" }}
+            >
+              오늘로 돌아가기
+            </button>
+          )}
+        </div>
+        <button
+          onClick={() => shiftFlightDate(1)}
+          className="w-9 h-9 flex items-center justify-center rounded-full transition-colors active:scale-95"
+          style={{ backgroundColor: "#e5e7e0" }}
+        >
+          <ChevronRight className="w-5 h-5" style={{ color: "#4d4f46" }} />
+        </button>
+      </div>
+
       {/* 진행 현황 */}
       <div className="grid grid-cols-3 gap-3 mb-5">
         {[
-          { label: "오늘 총 배정", value: totalCount,                 sub: "건", color: "#23251d" },
-          { label: "완료",         value: completedCount,             sub: "건", color: "#16A34A" },
-          { label: "남은 비행",   value: totalCount - completedCount, sub: "건", color: "#F54E00" },
+          { label: "총 배정", value: totalCount,                 sub: "건", color: "#23251d" },
+          { label: "완료",    value: completedCount,             sub: "건", color: "#16A34A" },
+          { label: "남은 비행", value: totalCount - completedCount, sub: "건", color: "#F54E00" },
         ].map((stat) => (
           <div key={stat.label} className="rounded-2xl p-4 text-center border" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
             <p className="text-2xl font-bold" style={{ color: stat.color }}>
@@ -552,7 +607,7 @@ export default function PilotPortalPage() {
         </div>
 
         {allTodayBookings.length === 0 && !loadingFlights && (
-          <p className="text-center text-xs py-4" style={{ color: "#9ea096" }}>오늘 예약이 없습니다</p>
+          <p className="text-center text-xs py-4" style={{ color: "#9ea096" }}>예약이 없습니다</p>
         )}
       </div>
 
@@ -1693,7 +1748,7 @@ export default function PilotPortalPage() {
   }
 
   const tabItems = [
-    { key: "today" as const,      label: "오늘 일정", icon: <CalendarDays className="w-4 h-4" /> },
+    { key: "today" as const,      label: "비행일정", icon: <CalendarDays className="w-4 h-4" /> },
     { key: "history" as const,    label: "비행기록",  icon: <BookOpen className="w-4 h-4" /> },
     { key: "settlement" as const, label: "정산",      icon: <Calculator className="w-4 h-4" /> },
     { key: "schedule" as const,   label: "스케줄",    icon: <LayoutGrid className="w-4 h-4" /> },
@@ -1726,7 +1781,7 @@ export default function PilotPortalPage() {
           </button>
         </div>
         <div>
-          <p className="text-white/60 text-sm">{today}</p>
+          <p className="text-white/60 text-sm">{new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short" })}</p>
           <h1 className="text-white text-2xl font-bold mt-0.5">{pilotName} 파일럿</h1>
           {licenseExpiry && (
             <p className="text-white/40 text-xs mt-1">자격증 만료 {licenseExpiry}</p>

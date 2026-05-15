@@ -216,7 +216,7 @@ export default function PilotPortalPage() {
   const [pilotInfo, setPilotInfo] = useState<DbPilot | null>(null);
 
   // ── 비행일정 날짜 탐색
-  const [flightDate, setFlightDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [flightDate, setFlightDate] = useState(() => new Date().toLocaleDateString("sv-SE"));
 
   // ── 비행
   const [flights, setFlights]               = useState<MyFlight[]>([]);
@@ -319,9 +319,9 @@ export default function PilotPortalPage() {
   // ── 날짜 이동
   function shiftFlightDate(delta: number) {
     setFlightDate((prev) => {
-      const d = new Date(prev + "T00:00:00");
-      d.setDate(d.getDate() + delta);
-      return d.toISOString().slice(0, 10);
+      const [y, m, d] = prev.split("-").map(Number);
+      const dt = new Date(y, m - 1, d + delta); // 로컬 시간 기준 날짜 연산
+      return dt.toLocaleDateString("sv-SE");
     });
   }
 
@@ -467,21 +467,18 @@ export default function PilotPortalPage() {
     }
   }
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = new Date().toLocaleDateString("sv-SE");
   const KR_WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
-  function formatFlightDate(d: string) {
-    const dt = new Date(d + "T00:00:00");
-    const mm = dt.getMonth() + 1;
-    const dd = dt.getDate();
+  function formatFlightDate(dateStr: string) {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
     const dow = KR_WEEKDAYS[dt.getDay()];
-    if (d === todayStr) return `오늘 (${mm}/${dd} ${dow})`;
-    const yesterday = new Date(todayStr + "T00:00:00");
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (d === yesterday.toISOString().slice(0, 10)) return `어제 (${mm}/${dd} ${dow})`;
-    const tomorrow = new Date(todayStr + "T00:00:00");
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    if (d === tomorrow.toISOString().slice(0, 10)) return `내일 (${mm}/${dd} ${dow})`;
-    return `${mm}월 ${dd}일 (${dow})`;
+    const [ty, tm, td] = todayStr.split("-").map(Number);
+    const diff = Math.round((new Date(y, m - 1, d).getTime() - new Date(ty, tm - 1, td).getTime()) / 86400000);
+    if (diff === 0)  return `오늘 (${m}/${d} ${dow})`;
+    if (diff === -1) return `어제 (${m}/${d} ${dow})`;
+    if (diff === 1)  return `내일 (${m}/${d} ${dow})`;
+    return `${m}월 ${d}일 (${dow})`;
   }
 
   // ── Flight Tab ─────────────────────────────────────────────────────────────

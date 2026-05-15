@@ -58,6 +58,8 @@ interface FlightRecord {
     headcount: number;
     flight_time?: string;
     options?: (string | { name: string })[] | null;
+    total_price?: number;
+    booking_pilots?: { pilot_id: string }[];
   };
 }
 
@@ -135,7 +137,8 @@ interface MonthRecord {
   month: string;           // "YYYY-MM"
   label: string;           // "2026년 5월"
   status: SettlementStatus;
-  rate: number;
+  pilotShare: number;      // 파일럿 지분 % (분배비율관리 기준)
+  isOverride?: boolean;    // 개별 오버라이드 적용 여부
   payment_due?: string;
   paid_at?: string;
   days: SettlementDay[];
@@ -235,7 +238,7 @@ export default function PilotPortalPage() {
 
   // ── 정산 데이터 (API)
   const [settlements, setSettlements]         = useState<MonthRecord[]>([]);
-  const [settlementRate, setSettlementRate]   = useState(30000);
+  const [pilotShare, setPilotShare]           = useState(60); // 분배비율 %
   const [loadingSettlement, setLoadingSettlement] = useState(false);
 
   // ── 정산 탭 상태
@@ -355,10 +358,10 @@ export default function PilotPortalPage() {
     setLoadingSettlement(true);
     fetch("/api/pilot/settlement")
       .then((r) => r.json())
-      .then((data: { months: MonthRecord[]; rate: number }) => {
+      .then((data: { months: MonthRecord[]; pilotShare: number }) => {
         if (Array.isArray(data.months)) {
           setSettlements(data.months);
-          setSettlementRate(data.rate ?? 30000);
+          setPilotShare(data.pilotShare ?? 60);
           // 초기 인덱스/범위 설정
           const allDays = data.months.flatMap((m) => m.days).sort((a, b) => a.date.localeCompare(b.date));
           if (allDays.length > 0) {
@@ -407,7 +410,9 @@ export default function PilotPortalPage() {
         map[d] = { date: d, day: KR_DAYS[dow], count: 0, amount: 0 };
       }
       map[d].count  += 1;
-      map[d].amount += settlementRate;
+      const numPilots = r.bookings?.booking_pilots?.length || 1;
+      const totalPrice = r.bookings?.total_price ?? 0;
+      map[d].amount += Math.round((totalPrice / numPilots) * pilotShare / 100);
     }
     return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
   })();
@@ -727,7 +732,11 @@ export default function PilotPortalPage() {
     if (selectedHistoryDate) {
       const daySummary = weekDaySummaries.find((x) => x.date === selectedHistoryDate);
       const detailCount  = historyDetailRecords.length;
-      const detailAmount = detailCount * settlementRate;
+      const detailAmount = historyDetailRecords.reduce((sum, r) => {
+        const numPilots = r.bookings?.booking_pilots?.length || 1;
+        const totalPrice = r.bookings?.total_price ?? 0;
+        return sum + Math.round((totalPrice / numPilots) * pilotShare / 100);
+      }, 0);
       const dayLabel = (() => {
         const dow = new Date(selectedHistoryDate + "T00:00:00").getDay();
         return KR_DAYS[dow];
@@ -1143,8 +1152,8 @@ export default function PilotPortalPage() {
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
-              <p style={{ color: "#9ea096" }}>단가</p>
-              <p className="font-semibold mt-0.5" style={{ color: "#4d4f46" }}>{formatPrice(rate)} / 건</p>
+              <p style={{ color: "#9ea096" }}>파일럿 지분</p>
+              <p className="font-semibold mt-0.5" style={{ color: "#4d4f46" }}>{rate}%</p>
             </div>
             <div>
               <p style={{ color: "#9ea096" }}>{payLabel}</p>
@@ -1258,7 +1267,7 @@ export default function PilotPortalPage() {
             disableNext={settlementMonthIdx <= 0}
           />
           <SummaryCard
-            title="월 정산 요약" total={total} amount={amount} rate={rec.rate}
+            title="월 정산 요약" total={total} amount={amount} rate={rec.pilotShare}
             statusKey={rec.status}
             payLabel={rec.status === "paid" ? "지급 완료일" : "지급 예정일"}
             payDate={rec.status === "paid" ? rec.paid_at : rec.payment_due}
@@ -1322,7 +1331,7 @@ export default function PilotPortalPage() {
             disableNext={settleWeekIdx <= 0}
           />
           <SummaryCard
-            title="주간 정산 요약" total={total} amount={amount} rate={settlementRate}
+            title="주간 정산 요약" total={total} amount={amount} rate={pilotShare}
             statusKey={weekStatus}
             payLabel={weekPaidLabel} payDate={weekPayDate}
             barDays={weekDays}
@@ -1490,7 +1499,7 @@ export default function PilotPortalPage() {
                 <p className="text-xs font-semibold mb-2" style={{ color: "#9ea096" }}>일 정산</p>
                 <div className="flex items-end gap-2 mb-3">
                   <p className="text-3xl font-bold" style={{ color: "#23251d" }}>{formatPrice(day.subtotal)}</p>
-                  <p className="text-sm mb-1" style={{ color: "#9ea096" }}>/ {day.count}건 × {formatPrice(settlementRate)}</p>
+                  <p className="text-sm mb-1" style={{ color: "#9ea096" }}>/ {day.count}건 · 지분 {pilotShare}%</p>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>

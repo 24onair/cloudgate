@@ -24,7 +24,8 @@ async function verifyPilotToken(token: string, secret: string): Promise<string |
 }
 
 // GET /api/pilot/settlement
-// Returns MonthRecord[] for the logged-in pilot, derived from real flight_records + settlements tables
+// 분배비율관리 설정 기반으로 파일럿 정산 계산
+// 계산식: booking.total_price ÷ 해당예약 배정파일럿수 × 파일럿지분%
 export async function GET(req: NextRequest) {
   try {
     const token = req.cookies.get("gureum_pilot_session")?.value;
@@ -36,15 +37,18 @@ export async function GET(req: NextRequest) {
     const supabase = createServerClient() as any;
     const tenantId = await getTenantId();
 
-    // 1. 파일럿 정산 단가
-    const { data: pilotRow } = await supabase
-      .from("pilots")
-      .select("rate_per_flight")
-      .eq("id", pilotId)
-      .single();
-    const rate: number = pilotRow?.rate_per_flight ?? 30000;
+    // ── 1. 분배비율 설정 로드 ──────────────────────────────────────
+    const [cfgRow, overrideRow] = await Promise.all([
+      supabase.from("site_settings").select("value").eq("key", "settlement_config").maybeSingle(),
+      supabase.from("site_settings").select("value").eq("key", "settlement_overrides").maybeSingle(),
+    ]);
 
-    // 2. settlements 테이블 (상태·지급일)
+    const defaultShare: number = cfgRow.data?.value?.defaultPilotShare ?? 60;
+    const overrides: { pilotId: string; pilotShare: number }[] = overrideRow.data?.value ?? [];
+    const pilotOverride = overrides.find((o: any) => o.pilotId === pilotId);
+    const pilotShare: number = pilotOverride?.pilotShare ?? defaultShare; // 이 파일럿의 지분 %
+
+    // ── 2. settlements 테이블 (상태·지급일) ───────────────────────
     const { data: settlRows } = await supabase
       .from("settlements")
       .select("year_month, status, paid_at, total_amount")
@@ -57,27 +61,55 @@ export async function GET(req: NextRequest) {
       settlMap[s.year_month] = s;
     }
 
-    // 3. flight_records — 이 파일럿의 전체 비행 이력
+    // ── 3. flight_records + 예약 정보 + booking_pilots 조회 ───────
     const { data: records } = await supabase
       .from("flight_records")
-      .select("flight_date, landing_at, booking_id, bookings(booking_no, customer_name, product_name, headcount, flight_time, options)")
+      .select(`
+        id,
+        flight_date,
+        landing_at,
+        booking_id,
+        bookings (
+          id,
+          booking_no,
+          customer_name,
+          product_name,
+          headcount,
+          flight_time,
+          total_price,
+          options,
+          booking_pilots ( pilot_id )
+        )
+      `)
       .eq("tenant_id", tenantId)
       .eq("pilot_id", pilotId)
       .order("flight_date", { ascending: false });
 
-    // 4. 날짜별 집계
-    const dayMap: Record<string, { count: number }> = {};
+    // ── 4. 날짜별 집계 (분배비율 적용) ───────────────────────────
+    // date → { count, amount }
+    const dayMap: Record<string, { count: number; amount: number }> = {};
     const monthSet = new Set<string>();
 
     for (const r of records ?? []) {
       const d: string = r.flight_date;
       const m = d.slice(0, 7);
       monthSet.add(m);
-      if (!dayMap[d]) dayMap[d] = { count: 0 };
+
+      const booking = r.bookings;
+      const totalPrice: number = booking?.total_price ?? 0;
+
+      // 이 예약에 배정된 파일럿 수 (없으면 1)
+      const numPilots: number = booking?.booking_pilots?.length || 1;
+
+      // 파일럿 1인당 분배 금액 = (예약금액 / 파일럿수) × 지분%
+      const pilotAmount = Math.round((totalPrice / numPilots) * pilotShare / 100);
+
+      if (!dayMap[d]) dayMap[d] = { count: 0, amount: 0 };
       dayMap[d].count++;
+      dayMap[d].amount += pilotAmount;
     }
 
-    // 5. MonthRecord 배열 생성 (비행 있는 달 + settlements 달 합집합)
+    // ── 5. MonthRecord 배열 생성 ──────────────────────────────────
     for (const m of Object.keys(settlMap)) monthSet.add(m);
     const monthsSorted = Array.from(monthSet).sort().reverse();
 
@@ -85,46 +117,43 @@ export async function GET(req: NextRequest) {
       const [y, mo] = month.split("-").map(Number);
       const label = `${y}년 ${mo}월`;
 
-      // 이 월에 해당하는 날짜들
       const days = Object.entries(dayMap)
         .filter(([d]) => d.startsWith(month + "-"))
-        .map(([d, { count }]) => {
+        .map(([d, { count, amount }]) => {
           const dow = new Date(d + "T00:00:00").getDay();
           return {
             date: d,
             day: KR_DAYS[dow],
             count,
-            subtotal: count * rate,
+            subtotal: amount,
           };
         })
         .sort((a, b) => a.date.localeCompare(b.date));
 
       const sRow = settlMap[month];
-      // draft(calculating) / confirmed / paid 매핑
       const rawStatus: string = sRow?.status ?? "calculating";
       const status = rawStatus === "paid" ? "paid"
         : rawStatus === "confirmed" ? "confirmed"
         : "draft";
 
       // 지급 예정일: 다음달 첫째 주 토요일
-      const nextMonth = new Date(y, mo, 1);
-      const nextMonthMo = nextMonth.getMonth(); // 0-indexed
       const sat = new Date(y, mo, 1);
       while (sat.getDay() !== 6) sat.setDate(sat.getDate() + 1);
-      const payment_due = sat.toISOString().slice(0, 10);
+      const payment_due = sat.toLocaleDateString("sv-SE");
 
       return {
         month,
         label,
         status,
-        rate,
+        pilotShare,           // 이 파일럿의 지분 % (UI 표시용)
+        isOverride: !!pilotOverride,
         payment_due,
         paid_at: sRow?.paid_at ? String(sRow.paid_at).slice(0, 10) : undefined,
         days,
       };
     });
 
-    return NextResponse.json({ months, rate });
+    return NextResponse.json({ months, pilotShare, isOverride: !!pilotOverride });
   } catch (e: unknown) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

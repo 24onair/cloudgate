@@ -28,20 +28,36 @@ export const SCHEDULE_CFG: Record<ScheduleStatus, { label: string; color: string
 
 const EVENT_KEY = "gureum_schedule_update";
 
-// ── 월별 캐시 ─────────────────────────────────────────────────────
+// ── 월별 캐시 (TTL: 60초) ──────────────────────────────────────────
 const _monthCache: Record<string, AllSchedules> = {};
+const _monthCacheTime: Record<string, number> = {};
+const CACHE_TTL_MS = 60_000; // 60초 — 파일럿 포털 변경사항 반영
 
-async function loadMonth(yearMonth: string): Promise<AllSchedules> {
-  if (_monthCache[yearMonth]) return _monthCache[yearMonth];
+async function loadMonth(yearMonth: string, force = false): Promise<AllSchedules> {
+  const now = Date.now();
+  const cached = _monthCache[yearMonth];
+  const age = now - (_monthCacheTime[yearMonth] ?? 0);
+  if (!force && cached && age < CACHE_TTL_MS) return cached;
   try {
     const res = await fetch(`/api/schedules?year_month=${yearMonth}`);
-    if (!res.ok) return {};
+    if (!res.ok) return cached ?? {};
     const data = await res.json();
     _monthCache[yearMonth] = data;
+    _monthCacheTime[yearMonth] = now;
     return data;
   } catch {
-    return {};
+    return cached ?? {};
   }
+}
+
+/** 특정 달(또는 전체)의 캐시를 무효화하고 즉시 재조회 */
+export async function invalidateScheduleCache(yearMonth?: string) {
+  if (yearMonth) {
+    delete _monthCacheTime[yearMonth];
+  } else {
+    for (const k of Object.keys(_monthCacheTime)) delete _monthCacheTime[k];
+  }
+  window.dispatchEvent(new Event(EVENT_KEY));
 }
 
 // ── notes 캐시 (API 없음, 클라이언트 캐시만) ──────────────────────
@@ -146,14 +162,18 @@ export function useSchedules() {
     });
 
     const refresh = () => {
-      // 캐시에서 재구성
-      const merged: AllSchedules = {};
-      for (const m of Object.values(_monthCache)) {
-        for (const [pid, dates] of Object.entries(m)) {
-          merged[pid] = { ...(merged[pid] ?? {}), ...dates };
+      // TTL 만료된 달이 있으면 API 재조회, 아니면 캐시에서 재구성
+      const now2 = new Date();
+      const curMonth = `${now2.getFullYear()}-${String(now2.getMonth() + 1).padStart(2, "0")}`;
+      const nxt = new Date(now2.getFullYear(), now2.getMonth() + 1, 1);
+      const nxtMonth = `${nxt.getFullYear()}-${String(nxt.getMonth() + 1).padStart(2, "0")}`;
+      Promise.all([loadMonth(curMonth), loadMonth(nxtMonth)]).then(([r1, r2]) => {
+        const merged: AllSchedules = {};
+        for (const pid of new Set([...Object.keys(r1), ...Object.keys(r2)])) {
+          merged[pid] = { ...(r1[pid] ?? {}), ...(r2[pid] ?? {}) };
         }
-      }
-      setSchedules({ ...merged });
+        setSchedules({ ...merged });
+      });
     };
     window.addEventListener(EVENT_KEY, refresh);
     return () => window.removeEventListener(EVENT_KEY, refresh);

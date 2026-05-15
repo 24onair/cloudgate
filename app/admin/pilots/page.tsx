@@ -504,6 +504,8 @@ function DetailPanel({
   const SCHEDULE_OPTIONS: ScheduleStatus[] = ["working", "standby", "off", "etc"];
 
   function cycleSchedule(date: string) {
+    // 오늘 이전 날짜는 변경 불가
+    if (date < TODAY_STR) return;
     const current = scheduleData[date] || "off";
     const idx = SCHEDULE_OPTIONS.indexOf(current);
     const next = SCHEDULE_OPTIONS[(idx + 1) % SCHEDULE_OPTIONS.length];
@@ -820,20 +822,21 @@ function DetailPanel({
                 const status = scheduleData[date] || "off";
                 const cfg = SCHEDULE_CFG[status];
                 const isToday = date === TODAY_STR;
+                const isPast = date < TODAY_STR;
 
                 return (
                   <button
                     key={date}
-                    onClick={() => editMode && cycleSchedule(date)}
-                    disabled={!editMode}
+                    onClick={() => editMode && !isPast && cycleSchedule(date)}
+                    disabled={!editMode || isPast}
                     className="flex flex-col items-center py-1.5 rounded-lg transition-all"
                     style={{
                       background: isToday ? cfg.bg : scheduleData[date] ? cfg.bg : "transparent",
                       border: isToday ? `1.5px solid ${cfg.color}` : "1.5px solid transparent",
-                      cursor: editMode ? "pointer" : "default",
-                      opacity: scheduleData[date] ? 1 : 0.4,
+                      cursor: editMode && !isPast ? "pointer" : "default",
+                      opacity: isPast ? 0.35 : scheduleData[date] ? 1 : 0.4,
                     }}
-                    title={`${date}: ${cfg.label}`}
+                    title={isPast ? `${date}: 과거 날짜 (변경 불가)` : `${date}: ${cfg.label}`}
                   >
                     <span
                       className="text-xs"

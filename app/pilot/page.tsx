@@ -1031,12 +1031,18 @@ export default function PilotPortalPage() {
               const status = scheduleData[dateStr] ?? "working";
               const cfg = statusConfig[status] ?? statusConfig.working;
               const isToday = dateStr === todayStr;
+              const isPast = dateStr < todayStr;
               return (
                 <button
                   key={dateStr}
-                  onClick={() => toggleScheduleDay(dateStr)}
-                  className="rounded-xl py-2 flex flex-col items-center gap-0.5 transition-all active:scale-95"
-                  style={{ backgroundColor: cfg.bg }}
+                  onClick={() => !isPast && toggleScheduleDay(dateStr)}
+                  disabled={isPast}
+                  className="rounded-xl py-2 flex flex-col items-center gap-0.5 transition-all"
+                  style={{
+                    backgroundColor: cfg.bg,
+                    opacity: isPast ? 0.38 : 1,
+                    cursor: isPast ? "default" : "pointer",
+                  }}
                 >
                   <span className="text-xs font-bold"
                     style={{
@@ -1051,14 +1057,19 @@ export default function PilotPortalPage() {
           </div>
         )}
 
-        {/* 범례 */}
-        <div className="flex gap-3 mt-4 justify-center">
-          {Object.entries(statusConfig).map(([key, cfg]) => (
-            <div key={key} className="flex items-center gap-1.5 text-xs" style={{ color: "#65675e" }}>
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cfg.bg, border: `1.5px solid ${cfg.color}` }} />
-              {cfg.label}
-            </div>
-          ))}
+        {/* 범례 — 파일럿 선택 가능 항목만 표시 (대기는 어드민 전용) */}
+        <div className="flex gap-3 mt-4 justify-center flex-wrap">
+          {(["working", "off", "etc", "standby"] as const).map((key) => {
+            const cfg = statusConfig[key];
+            const isAdminOnly = key === "standby";
+            return (
+              <div key={key} className="flex items-center gap-1.5 text-xs" style={{ color: "#65675e" }}>
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cfg.bg, border: `1.5px solid ${cfg.color}` }} />
+                <span>{cfg.label}</span>
+                {isAdminOnly && <span className="text-[9px]" style={{ color: "#9ea096" }}>(어드민)</span>}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -1739,13 +1750,16 @@ export default function PilotPortalPage() {
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
-  // ── 스케줄 상태 토글 (work→off→standby→work)
+  // ── 스케줄 상태 토글 (파일럿: 출근→휴무→기타→출근, 과거 날짜 불가)
   async function toggleScheduleDay(date: string) {
     if (!pilotId) return;
+    // 오늘 이전 날짜는 변경 불가
+    const today = new Date().toLocaleDateString("sv-SE");
+    if (date < today) return;
     const cur = scheduleData[date] ?? "working";
-    // "etc"(기타) 또는 알 수 없는 상태는 "working"으로 정규화 후 토글
-    const normalized = cur === "off" || cur === "standby" ? cur : "working";
-    const next = normalized === "working" ? "off" : normalized === "off" ? "standby" : "working";
+    // 파일럿 사이클: working → off → etc → working (대기 제외)
+    const PILOT_CYCLE: Record<string, string> = { working: "off", off: "etc", etc: "working", standby: "off" };
+    const next = PILOT_CYCLE[cur] ?? "off";
     setScheduleData((prev) => ({ ...prev, [date]: next }));
     try {
       await fetch("/api/schedules", {

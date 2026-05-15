@@ -71,13 +71,14 @@ function ProductModal({
   onClose,
 }: {
   initial?: Product;
-  onSave: (p: Product) => void;
+  onSave: (p: Product) => Promise<void>;
   onClose: () => void;
 }) {
   const [form, setForm] = useState<Omit<Product, "id" | "sortOrder">>(
     initial ? { ...initial } : { ...EMPTY_PRODUCT }
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
   const [slideIdx, setSlideIdx] = useState(0);
   const fileRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
 
@@ -110,14 +111,16 @@ function ProductModal({
     return e;
   }
 
-  function handleSave() {
+  async function handleSave() {
     const e = validate();
     if (Object.keys(e).length > 0) { setErrors(e); return; }
-    onSave({
+    setSaving(true);
+    await onSave({
       ...form,
       id: initial?.id ?? genId(),
-      sortOrder: initial?.sortOrder ?? Date.now(),
+      sortOrder: initial?.sortOrder ?? 9999,  // Date.now() → integer overflow 방지
     });
+    setSaving(false);
   }
 
   const isEdit = !!initial;
@@ -377,10 +380,11 @@ function ProductModal({
             </button>
             <button
               onClick={handleSave}
-              className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white"
+              disabled={saving}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-60"
               style={{ background: "#0D2B52" }}
             >
-              {isEdit ? "수정 완료" : "상품 추가"}
+              {saving ? "저장 중…" : isEdit ? "수정 완료" : "상품 추가"}
             </button>
           </div>
         </div>
@@ -511,15 +515,15 @@ export default function ProductsPage() {
   const sortedProducts = [...products].sort((a, b) => a.sortOrder - b.sortOrder);
   const activeCount = products.filter((p) => p.active).length;
 
-  function handleSaveProduct(p: Product) {
-    if (productModal === "add") addProduct(p);
-    else updateProduct(p);
+  async function handleSaveProduct(p: Product) {
+    if (productModal === "add") await addProduct(p);
+    else await updateProduct(p);
     setProductModal(null);
   }
 
-  function handleSaveOption(o: ProductOption) {
-    if (optionModal === "add") addOption(o);
-    else updateOption(o);
+  async function handleSaveOption(o: ProductOption) {
+    if (optionModal === "add") await addOption(o);
+    else await updateOption(o);
     setOptionModal(null);
   }
 

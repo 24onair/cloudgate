@@ -135,12 +135,22 @@ function dispatchUpdate() {
 
 // ── Products API ───────────────────────────────────────────────────
 
+// ── sort_order 안전 변환 (PostgreSQL integer 최대값 2147483647 이하로 제한) ──
+function safeOrder(n: number): number {
+  if (!Number.isFinite(n) || n > 2_147_483_647) {
+    // Date.now() 등 거대 값이 들어온 경우 → 기존 최대값 + 1
+    const max = Math.max(0, ...(_productsCache ?? []).map((p) => p.sortOrder));
+    return Math.min(max + 1, 9999);
+  }
+  return n;
+}
+
 export async function addProduct(product: Product): Promise<void> {
   // optimistic update
   _productsCache = [...(_productsCache ?? DEFAULT_PRODUCTS), product];
   dispatchUpdate();
   try {
-    await fetch("/api/products", {
+    const res = await fetch("/api/products", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -151,26 +161,39 @@ export async function addProduct(product: Product): Promise<void> {
         duration_min: parseInt(product.duration.replace(/[^0-9]/g, ""), 10) || 0,
         is_featured: product.popular,
         is_active: product.active,
-        sort_order: product.sortOrder,
+        sort_order: safeOrder(product.sortOrder),  // ← integer overflow 방지
       }),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error("[productStore] addProduct 실패:", err);
+      // 실패 시 캐시 롤백
+      _productsCache = null;
+      await loadProductsFromApi();
+      dispatchUpdate();
+      return;
+    }
     // 서버 응답으로 캐시 갱신
     _productsCache = null;
     await loadProductsFromApi();
     dispatchUpdate();
-  } catch {
-    /* 실패해도 캐시는 유지 */
+  } catch (e) {
+    console.error("[productStore] addProduct 네트워크 오류:", e);
+    _productsCache = null;
+    await loadProductsFromApi();
+    dispatchUpdate();
   }
 }
 
 export async function updateProduct(updated: Product): Promise<void> {
   // optimistic update
+  const prev = _productsCache;
   _productsCache = (_productsCache ?? DEFAULT_PRODUCTS).map((p) =>
     p.id === updated.id ? updated : p
   );
   dispatchUpdate();
   try {
-    await fetch("/api/products", {
+    const res = await fetch("/api/products", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -181,26 +204,48 @@ export async function updateProduct(updated: Product): Promise<void> {
         duration_min: parseInt(updated.duration.replace(/[^0-9]/g, ""), 10) || 0,
         is_featured: updated.popular,
         is_active: updated.active,
-        sort_order: updated.sortOrder,
+        sort_order: safeOrder(updated.sortOrder),
       }),
     });
-  } catch {
-    /* 실패해도 캐시는 유지 */
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error("[productStore] updateProduct 실패:", err);
+      // 실패 시 이전 캐시로 롤백
+      _productsCache = prev;
+      dispatchUpdate();
+    } else {
+      // 성공 시 서버 데이터로 정확히 동기화
+      _productsCache = null;
+      await loadProductsFromApi();
+      dispatchUpdate();
+    }
+  } catch (e) {
+    console.error("[productStore] updateProduct 네트워크 오류:", e);
+    _productsCache = prev;
+    dispatchUpdate();
   }
 }
 
 export async function deleteProduct(id: string): Promise<void> {
   // optimistic update
+  const prev = _productsCache;
   _productsCache = (_productsCache ?? DEFAULT_PRODUCTS).filter((p) => p.id !== id);
   dispatchUpdate();
   try {
-    await fetch("/api/products", {
+    const res = await fetch("/api/products", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
-  } catch {
-    /* 실패해도 캐시는 유지 */
+    if (!res.ok) {
+      console.error("[productStore] deleteProduct 실패:", await res.json().catch(() => ({})));
+      _productsCache = prev;
+      dispatchUpdate();
+    }
+  } catch (e) {
+    console.error("[productStore] deleteProduct 네트워크 오류:", e);
+    _productsCache = prev;
+    dispatchUpdate();
   }
 }
 

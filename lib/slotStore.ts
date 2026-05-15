@@ -12,15 +12,8 @@ export interface SlotConfig {
 // date(YYYY-MM-DD) → [차단된 시간들("HH:mm")]
 export type BlockedSlots = Record<string, string[]>;
 
-// TODO: API — 슬롯 설정/차단 localStorage → API 교체
-// loadCfg()           → GET  /api/slots/config
-// updateSlotConfig()  → PATCH /api/slots/config { startTime, endTime, intervalMinutes }
-// loadBlocks()        → GET  /api/slots/blocked
-// toggleBlockedSlot() → PATCH /api/slots/blocked/:date { time, blocked: boolean }
-
-const CFG_KEY      = "gureum_slot_config";
-const BLOCK_KEY    = "gureum_blocked_slots";
-const EVENT_KEY    = "gureum_slots_update";
+const CFG_EVENT_KEY    = "gureum_slots_config_update";
+const BLOCKS_EVENT_KEY = "gureum_slots_blocks_update";
 
 const DEFAULT_CFG: SlotConfig = {
   startTime: "09:00",
@@ -29,67 +22,123 @@ const DEFAULT_CFG: SlotConfig = {
 };
 
 // ── Config ─────────────────────────────────────────────
-function loadCfg(): SlotConfig {
-  if (typeof window === "undefined") return DEFAULT_CFG;
+let _cfgCache: SlotConfig | null = null;
+
+async function loadCfg(): Promise<SlotConfig> {
   try {
-    const raw = localStorage.getItem(CFG_KEY);
-    return raw ? { ...DEFAULT_CFG, ...JSON.parse(raw) } : DEFAULT_CFG;
-  } catch { return DEFAULT_CFG; }
+    const res = await fetch("/api/site-settings/slot_config");
+    if (!res.ok) return DEFAULT_CFG;
+    const json = await res.json();
+    if (!json || !json.value) return DEFAULT_CFG;
+    _cfgCache = { ...DEFAULT_CFG, ...json.value };
+    return _cfgCache!;
+  } catch {
+    return DEFAULT_CFG;
+  }
 }
 
 export function getSlotConfig(): SlotConfig {
-  return loadCfg();
+  return _cfgCache ?? DEFAULT_CFG;
 }
 
-export function updateSlotConfig(cfg: SlotConfig) {
-  localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
-  window.dispatchEvent(new Event(EVENT_KEY));
+export async function updateSlotConfig(cfg: SlotConfig): Promise<void> {
+  _cfgCache = cfg;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(CFG_EVENT_KEY));
+  try {
+    await fetch("/api/site-settings/slot_config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: cfg }),
+    });
+  } catch { /* ignore */ }
 }
 
 export function useSlotConfig() {
-  const [cfg, setCfg] = useState<SlotConfig>(DEFAULT_CFG);
+  const [cfg, setCfg] = useState<SlotConfig>(_cfgCache ?? DEFAULT_CFG);
   useEffect(() => {
-    const refresh = () => setCfg(loadCfg());
-    refresh();
-    window.addEventListener(EVENT_KEY, refresh);
-    return () => window.removeEventListener(EVENT_KEY, refresh);
+    let mounted = true;
+    if (!_cfgCache) {
+      loadCfg().then((d) => { if (mounted) setCfg(d); });
+    }
+    const refresh = () => { if (_cfgCache) setCfg({ ..._cfgCache! }); };
+    window.addEventListener(CFG_EVENT_KEY, refresh);
+    return () => {
+      mounted = false;
+      window.removeEventListener(CFG_EVENT_KEY, refresh);
+    };
   }, []);
   return cfg;
 }
 
 // ── Blocked Slots ──────────────────────────────────────
-function loadBlocks(): BlockedSlots {
-  if (typeof window === "undefined") return {};
+let _blocksCache: BlockedSlots | null = null;
+
+async function loadBlocks(): Promise<BlockedSlots> {
   try {
-    const raw = localStorage.getItem(BLOCK_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+    const res = await fetch("/api/blocked-slots");
+    if (!res.ok) return {};
+    const json = await res.json();
+    _blocksCache = json ?? {};
+    return _blocksCache!;
+  } catch {
+    return {};
+  }
 }
 
 export function getBlockedSlots(): BlockedSlots {
-  return loadBlocks();
+  return _blocksCache ?? {};
 }
 
-export function toggleBlockedSlot(date: string, time: string) {
-  const data = loadBlocks();
-  const list = data[date] ?? [];
-  if (list.includes(time)) {
-    data[date] = list.filter((t) => t !== time);
-    if (data[date].length === 0) delete data[date];
+export async function toggleBlockedSlot(date: string, time: string): Promise<void> {
+  const current = _blocksCache ?? {};
+  const list = current[date] ?? [];
+  const isBlocked = list.includes(time);
+
+  if (isBlocked) {
+    // 차단 해제
+    const newList = list.filter((t) => t !== time);
+    if (newList.length === 0) {
+      const updated = { ...current };
+      delete updated[date];
+      _blocksCache = updated;
+    } else {
+      _blocksCache = { ...current, [date]: newList };
+    }
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(BLOCKS_EVENT_KEY));
+    try {
+      await fetch("/api/blocked-slots", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, time }),
+      });
+    } catch { /* ignore */ }
   } else {
-    data[date] = [...list, time];
+    // 차단 추가
+    _blocksCache = { ...current, [date]: [...list, time] };
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(BLOCKS_EVENT_KEY));
+    try {
+      await fetch("/api/blocked-slots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, time }),
+      });
+    } catch { /* ignore */ }
   }
-  localStorage.setItem(BLOCK_KEY, JSON.stringify(data));
-  window.dispatchEvent(new Event(EVENT_KEY));
 }
 
 export function useBlockedSlots() {
-  const [blocks, setBlocks] = useState<BlockedSlots>({});
+  const [blocks, setBlocks] = useState<BlockedSlots>(_blocksCache ?? {});
   useEffect(() => {
-    const refresh = () => setBlocks(loadBlocks());
-    refresh();
-    window.addEventListener(EVENT_KEY, refresh);
-    return () => window.removeEventListener(EVENT_KEY, refresh);
+    let mounted = true;
+    if (!_blocksCache) {
+      loadBlocks().then((d) => { if (mounted) setBlocks(d); });
+    }
+    const refresh = () => { if (_blocksCache) setBlocks({ ..._blocksCache! }); };
+    window.addEventListener(BLOCKS_EVENT_KEY, refresh);
+    return () => {
+      mounted = false;
+      window.removeEventListener(BLOCKS_EVENT_KEY, refresh);
+    };
   }, []);
   return blocks;
 }

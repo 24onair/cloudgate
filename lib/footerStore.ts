@@ -15,7 +15,6 @@ export interface FooterConfig {
   bizInfo: string;
 }
 
-const STORE_KEY = "gureum_footer";
 const EVENT_KEY = "gureum_footer_update";
 
 const DEFAULT: FooterConfig = {
@@ -31,31 +30,55 @@ const DEFAULT: FooterConfig = {
   bizInfo:      "사업자등록번호 000-00-00000 · 대표 홍길동",
 };
 
-function load(): FooterConfig {
-  if (typeof window === "undefined") return DEFAULT;
+let _cache: FooterConfig | null = null;
+
+async function loadFromApi(): Promise<FooterConfig> {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
-    return raw ? { ...DEFAULT, ...JSON.parse(raw) } : DEFAULT;
+    const res = await fetch("/api/site-settings/footer");
+    if (!res.ok) return DEFAULT;
+    const json = await res.json();
+    if (!json || !json.value) return DEFAULT;
+    _cache = { ...DEFAULT, ...json.value };
+    return _cache!;
   } catch {
     return DEFAULT;
   }
 }
 
-function save(c: FooterConfig) {
-  localStorage.setItem(STORE_KEY, JSON.stringify(c));
-  window.dispatchEvent(new Event(EVENT_KEY));
+async function saveToApi(data: FooterConfig): Promise<void> {
+  _cache = data;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(EVENT_KEY));
+  try {
+    await fetch("/api/site-settings/footer", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: data }),
+    });
+  } catch { /* ignore */ }
 }
 
-export function getFooter(): FooterConfig { return load(); }
-export function setFooter(patch: Partial<FooterConfig>) { save({ ...load(), ...patch }); }
+export function getFooter(): FooterConfig {
+  return _cache ?? DEFAULT;
+}
+
+export function setFooter(patch: Partial<FooterConfig>) {
+  const current = _cache ?? DEFAULT;
+  saveToApi({ ...current, ...patch });
+}
 
 export function useFooter(): FooterConfig {
-  const [config, setConfig] = useState<FooterConfig>(DEFAULT);
+  const [config, setConfig] = useState<FooterConfig>(_cache ?? DEFAULT);
   useEffect(() => {
-    const refresh = () => setConfig(load());
-    refresh();
+    let mounted = true;
+    if (!_cache) {
+      loadFromApi().then((d) => { if (mounted) setConfig(d); });
+    }
+    const refresh = () => { if (_cache) setConfig({ ..._cache! }); };
     window.addEventListener(EVENT_KEY, refresh);
-    return () => window.removeEventListener(EVENT_KEY, refresh);
+    return () => {
+      mounted = false;
+      window.removeEventListener(EVENT_KEY, refresh);
+    };
   }, []);
   return config;
 }

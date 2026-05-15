@@ -23,8 +23,6 @@ export interface ProductOption {
   active: boolean;
 }
 
-const STORAGE_KEY = "gureum_products";
-const OPTIONS_KEY = "gureum_product_options";
 const EVENT_KEY = "gureum_products_update";
 
 const DEFAULT_PRODUCTS: Product[] = [
@@ -37,7 +35,6 @@ const DEFAULT_PRODUCTS: Product[] = [
     color: "#2A7AE2",
     popular: false,
     active: true,
-
     sortOrder: 1,
     images: [],
   },
@@ -50,7 +47,6 @@ const DEFAULT_PRODUCTS: Product[] = [
     color: "#FF8A00",
     popular: true,
     active: true,
-
     sortOrder: 2,
     images: [],
   },
@@ -63,7 +59,6 @@ const DEFAULT_PRODUCTS: Product[] = [
     color: "#8B5CF6",
     popular: false,
     active: true,
-
     sortOrder: 3,
     images: [],
   },
@@ -74,88 +69,234 @@ const DEFAULT_OPTIONS: ProductOption[] = [
   { id: "video", label: "영상 촬영", description: "고프로 영상 편집본", price: 20000, active: true },
 ];
 
-// TODO: API — 아래 load/save 함수들을 API 호출로 교체
-// loadProducts  → GET  /api/products
-// saveProducts  → POST /api/products (신규) / PATCH /api/products/:id (수정)
-// deleteProduct → DELETE /api/products/:id
-// loadOptions   → GET  /api/product-options
-// saveOptions   → POST /api/product-options / PATCH /api/product-options/:id
+// ── in-memory cache ────────────────────────────────────────────────
+let _productsCache: Product[] | null = null;
+let _optionsCache: ProductOption[] | null = null;
 
-function loadProducts(): Product[] {
-  if (typeof window === "undefined") return DEFAULT_PRODUCTS;
+// ── API helpers ────────────────────────────────────────────────────
+
+function mapDbProduct(row: Record<string, unknown>): Product {
+  const durationMin = typeof row.duration_min === "number" ? row.duration_min : 0;
+  return {
+    id: String(row.slug ?? row.id ?? ""),
+    name: String(row.name ?? ""),
+    subtitle: String(row.subtitle ?? ""),
+    price: Number(row.price ?? 0),
+    duration: durationMin > 0 ? `약 ${durationMin}분` : String(row.duration ?? ""),
+    color: "#2A7AE2",
+    images: [],
+    popular: Boolean(row.is_featured ?? false),
+    active: Boolean(row.is_active ?? true),
+    sortOrder: Number(row.sort_order ?? 0),
+  };
+}
+
+function mapDbOption(row: Record<string, unknown>): ProductOption {
+  return {
+    id: String(row.id ?? ""),
+    label: String(row.name ?? ""),
+    description: String(row.description ?? ""),
+    price: Number(row.price ?? 0),
+    active: Boolean(row.is_active ?? true),
+  };
+}
+
+async function loadProductsFromApi(): Promise<Product[]> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : DEFAULT_PRODUCTS;
+    const res = await fetch("/api/products");
+    if (!res.ok) return DEFAULT_PRODUCTS;
+    const data = await res.json();
+    const products = Array.isArray(data) ? data.map(mapDbProduct) : DEFAULT_PRODUCTS;
+    _productsCache = products;
+    return products;
   } catch {
     return DEFAULT_PRODUCTS;
   }
 }
 
-function saveProducts(data: Product[]) {
-  // TODO: API — localStorage.setItem → API 호출로 교체
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  window.dispatchEvent(new Event(EVENT_KEY));
-}
-
-function loadOptions(): ProductOption[] {
-  if (typeof window === "undefined") return DEFAULT_OPTIONS;
+async function loadOptionsFromApi(): Promise<ProductOption[]> {
   try {
-    const raw = localStorage.getItem(OPTIONS_KEY);
-    return raw ? JSON.parse(raw) : DEFAULT_OPTIONS;
+    const res = await fetch("/api/product-options");
+    if (!res.ok) return DEFAULT_OPTIONS;
+    const data = await res.json();
+    const options = Array.isArray(data) ? data.map(mapDbOption) : DEFAULT_OPTIONS;
+    _optionsCache = options;
+    return options;
   } catch {
     return DEFAULT_OPTIONS;
   }
 }
 
-function saveOptions(data: ProductOption[]) {
-  // TODO: API — localStorage.setItem → API 호출로 교체
-  localStorage.setItem(OPTIONS_KEY, JSON.stringify(data));
-  window.dispatchEvent(new Event(EVENT_KEY));
+function dispatchUpdate() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(EVENT_KEY));
 }
 
+// ── Products API ───────────────────────────────────────────────────
+
+export async function addProduct(product: Product): Promise<void> {
+  // optimistic update
+  _productsCache = [...(_productsCache ?? DEFAULT_PRODUCTS), product];
+  dispatchUpdate();
+  try {
+    await fetch("/api/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        slug: product.id,
+        name: product.name,
+        subtitle: product.subtitle,
+        price: product.price,
+        duration_min: parseInt(product.duration.replace(/[^0-9]/g, ""), 10) || 0,
+        is_featured: product.popular,
+        is_active: product.active,
+        sort_order: product.sortOrder,
+      }),
+    });
+    // 서버 응답으로 캐시 갱신
+    _productsCache = null;
+    await loadProductsFromApi();
+    dispatchUpdate();
+  } catch {
+    /* 실패해도 캐시는 유지 */
+  }
+}
+
+export async function updateProduct(updated: Product): Promise<void> {
+  // optimistic update
+  _productsCache = (_productsCache ?? DEFAULT_PRODUCTS).map((p) =>
+    p.id === updated.id ? updated : p
+  );
+  dispatchUpdate();
+  try {
+    await fetch("/api/products", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: updated.id,
+        name: updated.name,
+        subtitle: updated.subtitle,
+        price: updated.price,
+        duration_min: parseInt(updated.duration.replace(/[^0-9]/g, ""), 10) || 0,
+        is_featured: updated.popular,
+        is_active: updated.active,
+        sort_order: updated.sortOrder,
+      }),
+    });
+  } catch {
+    /* 실패해도 캐시는 유지 */
+  }
+}
+
+export async function deleteProduct(id: string): Promise<void> {
+  // optimistic update
+  _productsCache = (_productsCache ?? DEFAULT_PRODUCTS).filter((p) => p.id !== id);
+  dispatchUpdate();
+  try {
+    await fetch("/api/products", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+  } catch {
+    /* 실패해도 캐시는 유지 */
+  }
+}
+
+// ── Options API ────────────────────────────────────────────────────
+
+export async function addOption(option: ProductOption): Promise<void> {
+  // optimistic update
+  _optionsCache = [...(_optionsCache ?? DEFAULT_OPTIONS), option];
+  dispatchUpdate();
+  try {
+    await fetch("/api/product-options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: option.label,
+        description: option.description,
+        price: option.price,
+        is_active: option.active,
+      }),
+    });
+    // 서버 응답으로 캐시 갱신
+    _optionsCache = null;
+    await loadOptionsFromApi();
+    dispatchUpdate();
+  } catch {
+    /* 실패해도 캐시는 유지 */
+  }
+}
+
+export async function updateOption(updated: ProductOption): Promise<void> {
+  // optimistic update
+  _optionsCache = (_optionsCache ?? DEFAULT_OPTIONS).map((o) =>
+    o.id === updated.id ? updated : o
+  );
+  dispatchUpdate();
+  try {
+    await fetch("/api/product-options", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: updated.id,
+        name: updated.label,
+        description: updated.description,
+        price: updated.price,
+        is_active: updated.active,
+      }),
+    });
+  } catch {
+    /* 실패해도 캐시는 유지 */
+  }
+}
+
+export async function deleteOption(id: string): Promise<void> {
+  // optimistic update
+  _optionsCache = (_optionsCache ?? DEFAULT_OPTIONS).filter((o) => o.id !== id);
+  dispatchUpdate();
+  try {
+    await fetch("/api/product-options", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+  } catch {
+    /* 실패해도 캐시는 유지 */
+  }
+}
+
+// ── hook ──────────────────────────────────────────────────────────
+
 export function useProducts() {
-  const [products, setProducts] = useState<Product[]>(DEFAULT_PRODUCTS);
-  const [options, setOptions] = useState<ProductOption[]>(DEFAULT_OPTIONS);
+  const [products, setProducts] = useState<Product[]>(_productsCache ?? DEFAULT_PRODUCTS);
+  const [options, setOptions] = useState<ProductOption[]>(_optionsCache ?? DEFAULT_OPTIONS);
 
   useEffect(() => {
+    let mounted = true;
+
+    // 캐시가 없으면 API에서 로드
+    if (!_productsCache) {
+      loadProductsFromApi().then((d) => {
+        if (mounted) setProducts(d);
+      });
+    }
+    if (!_optionsCache) {
+      loadOptionsFromApi().then((d) => {
+        if (mounted) setOptions(d);
+      });
+    }
+
     const refresh = () => {
-      setProducts(loadProducts());
-      setOptions(loadOptions());
+      if (_productsCache) setProducts([..._productsCache]);
+      if (_optionsCache) setOptions([..._optionsCache]);
     };
-    refresh();
     window.addEventListener(EVENT_KEY, refresh);
-    return () => window.removeEventListener(EVENT_KEY, refresh);
+    return () => {
+      mounted = false;
+      window.removeEventListener(EVENT_KEY, refresh);
+    };
   }, []);
 
   return { products, options };
-}
-
-export function addProduct(product: Product) {
-  const data = loadProducts();
-  saveProducts([...data, product]);
-}
-
-export function updateProduct(updated: Product) {
-  const data = loadProducts().map((p) => (p.id === updated.id ? updated : p));
-  saveProducts(data);
-}
-
-export function deleteProduct(id: string) {
-  const data = loadProducts().filter((p) => p.id !== id);
-  saveProducts(data);
-}
-
-export function addOption(option: ProductOption) {
-  const data = loadOptions();
-  saveOptions([...data, option]);
-}
-
-export function updateOption(updated: ProductOption) {
-  const data = loadOptions().map((o) => (o.id === updated.id ? updated : o));
-  saveOptions(data);
-}
-
-export function deleteOption(id: string) {
-  const data = loadOptions().filter((o) => o.id !== id);
-  saveOptions(data);
 }

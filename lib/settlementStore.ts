@@ -15,73 +15,102 @@ export interface PilotShareOverride {
   reason?: string;           // 사유 메모 (선택)
 }
 
-const CFG_KEY      = "gureum_settlement_config";
-const OVERRIDE_KEY = "gureum_pilot_share_overrides";
-const EVENT_KEY    = "gureum_settlement_update";
+const EVENT_KEY = "gureum_settlement_update";
 
 const DEFAULT_CFG: SettlementConfig = {
   defaultPilotShare: 60, // 파일럿 60% / 회사 40%
 };
 
-// TODO: API — 정산 설정 localStorage → API 교체
-// loadCfg()              → GET  /api/settlement/config
-// updateSettlementConfig → PATCH /api/settlement/config { defaultPilotShare }
-// loadOverrides()        → GET  /api/settlement/overrides
-// setPilotOverride()     → PUT  /api/settlement/overrides/:pilotId
-// removePilotOverride()  → DELETE /api/settlement/overrides/:pilotId
+// ── 캐시 ──────────────────────────────────────────────────────────
+let _cfgCache: SettlementConfig | null = null;
+let _overridesCache: PilotShareOverride[] | null = null;
 
-// ── Config ────────────────────────────────────────────
-function loadCfg(): SettlementConfig {
-  if (typeof window === "undefined") return DEFAULT_CFG;
-  try {
-    const raw = localStorage.getItem(CFG_KEY);
-    return raw ? { ...DEFAULT_CFG, ...JSON.parse(raw) } : DEFAULT_CFG;
-  } catch { return DEFAULT_CFG; }
+// ── API 헬퍼 ──────────────────────────────────────────────────────
+async function saveCfgToApi(cfg: SettlementConfig): Promise<void> {
+  await fetch("/api/site-settings/settlement_config", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value: cfg }),
+  });
 }
+
+async function saveOverridesToApi(overrides: PilotShareOverride[]): Promise<void> {
+  await fetch("/api/site-settings/settlement_overrides", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value: overrides }),
+  });
+}
+
+// ── Config ─────────────────────────────────────────────────────────
 
 export function getSettlementConfig(): SettlementConfig {
-  return loadCfg();
+  return _cfgCache ?? DEFAULT_CFG;
 }
 
-export function updateSettlementConfig(cfg: SettlementConfig) {
-  const clean = { ...cfg, defaultPilotShare: clamp(cfg.defaultPilotShare) };
-  localStorage.setItem(CFG_KEY, JSON.stringify(clean));
-  window.dispatchEvent(new Event(EVENT_KEY));
-}
-
-// ── Per-Pilot Overrides ──────────────────────────────
-function loadOverrides(): Record<string, PilotShareOverride> {
-  if (typeof window === "undefined") return {};
+export async function updateSettlementConfig(cfg: SettlementConfig): Promise<void> {
+  const clean: SettlementConfig = { ...cfg, defaultPilotShare: clamp(cfg.defaultPilotShare) };
+  _cfgCache = clean;
   try {
-    const raw = localStorage.getItem(OVERRIDE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
-}
-
-export function getOverrides(): Record<string, PilotShareOverride> {
-  return loadOverrides();
-}
-
-export function setPilotOverride(o: PilotShareOverride) {
-  const data = loadOverrides();
-  data[o.pilotId] = { ...o, pilotShare: clamp(o.pilotShare) };
-  localStorage.setItem(OVERRIDE_KEY, JSON.stringify(data));
+    await saveCfgToApi(clean);
+  } catch {
+    // 오류 시에도 캐시는 유지
+  }
   window.dispatchEvent(new Event(EVENT_KEY));
 }
 
-export function removePilotOverride(pilotId: string) {
-  const data = loadOverrides();
-  delete data[pilotId];
-  localStorage.setItem(OVERRIDE_KEY, JSON.stringify(data));
+// ── Per-Pilot Overrides ────────────────────────────────────────────
+
+export function getOverrides(): PilotShareOverride[] {
+  return _overridesCache ?? [];
+}
+
+export async function setPilotOverride(
+  pilotIdOrOverride: string | PilotShareOverride,
+  pilotShare?: number,
+  reason?: string
+): Promise<void> {
+  // 객체 형태 호환: setPilotOverride({ pilotId, pilotShare, reason? })
+  let resolved: PilotShareOverride;
+  if (typeof pilotIdOrOverride === "object") {
+    resolved = { ...pilotIdOrOverride, pilotShare: clamp(pilotIdOrOverride.pilotShare) };
+  } else {
+    resolved = { pilotId: pilotIdOrOverride, pilotShare: clamp(pilotShare ?? 0), reason };
+  }
+
+  const overrides = _overridesCache ? [..._overridesCache] : [];
+  const idx = overrides.findIndex((o) => o.pilotId === resolved.pilotId);
+  if (idx >= 0) {
+    overrides[idx] = resolved;
+  } else {
+    overrides.push(resolved);
+  }
+  _overridesCache = overrides;
+  try {
+    await saveOverridesToApi(overrides);
+  } catch {
+    // 오류 시에도 캐시 유지
+  }
   window.dispatchEvent(new Event(EVENT_KEY));
 }
 
-// ── 적용 함수 ─────────────────────────────────────────
+export async function removePilotOverride(pilotId: string): Promise<void> {
+  const overrides = (_overridesCache ?? []).filter((o) => o.pilotId !== pilotId);
+  _overridesCache = overrides;
+  try {
+    await saveOverridesToApi(overrides);
+  } catch {
+    // 오류 시에도 캐시 유지
+  }
+  window.dispatchEvent(new Event(EVENT_KEY));
+}
+
+// ── 적용 함수 ──────────────────────────────────────────────────────
 export function getPilotShare(pilotId: string): { share: number; isOverride: boolean; reason?: string } {
-  const overrides = loadOverrides();
-  const o = overrides[pilotId];
+  const overrides = _overridesCache ?? [];
+  const o = overrides.find((x) => x.pilotId === pilotId);
   if (o) return { share: o.pilotShare, isOverride: true, reason: o.reason };
-  return { share: loadCfg().defaultPilotShare, isOverride: false };
+  return { share: getSettlementConfig().defaultPilotShare, isOverride: false };
 }
 
 export function calcSplit(amount: number, pilotId: string) {
@@ -97,26 +126,62 @@ export function calcSplit(amount: number, pilotId: string) {
   };
 }
 
-// ── Hook ──────────────────────────────────────────────
-export function useSettlement() {
+// ── Hooks ──────────────────────────────────────────────────────────
+export function useSettlementConfig() {
   const [cfg, setCfg] = useState<SettlementConfig>(DEFAULT_CFG);
-  const [overrides, setOverrides] = useState<Record<string, PilotShareOverride>>({});
 
   useEffect(() => {
-    const refresh = () => {
-      setCfg(loadCfg());
-      setOverrides(loadOverrides());
-    };
-    refresh();
+    fetch("/api/site-settings/settlement_config")
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => {
+        const loaded: SettlementConfig = json?.value ?? DEFAULT_CFG;
+        _cfgCache = loaded;
+        setCfg(loaded);
+      })
+      .catch(() => {});
+
+    const refresh = () => setCfg(_cfgCache ?? DEFAULT_CFG);
     window.addEventListener(EVENT_KEY, refresh);
     return () => window.removeEventListener(EVENT_KEY, refresh);
   }, []);
 
+  return cfg;
+}
+
+export function useOverrides() {
+  const [overrides, setOverrides] = useState<PilotShareOverride[]>([]);
+
+  useEffect(() => {
+    fetch("/api/site-settings/settlement_overrides")
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => {
+        const loaded: PilotShareOverride[] = json?.value ?? [];
+        _overridesCache = loaded;
+        setOverrides(loaded);
+      })
+      .catch(() => {});
+
+    const refresh = () => setOverrides([...(_overridesCache ?? [])]);
+    window.addEventListener(EVENT_KEY, refresh);
+    return () => window.removeEventListener(EVENT_KEY, refresh);
+  }, []);
+
+  return overrides;
+}
+
+export function useSettlement() {
+  const cfg = useSettlementConfig();
+  const overridesArr = useOverrides();
+  // 기존 코드 호환을 위해 Record 형태로도 제공
+  const overrides = overridesArr.reduce<Record<string, PilotShareOverride>>((acc, o) => {
+    acc[o.pilotId] = o;
+    return acc;
+  }, {});
   return { cfg, overrides };
 }
 
-// ── Helpers ──────────────────────────────────────────
-function clamp(n: number): number {
+// ── Helpers ───────────────────────────────────────────────────────
+export function clamp(n: number): number {
   if (Number.isNaN(n)) return 0;
   return Math.max(0, Math.min(100, Math.round(n)));
 }

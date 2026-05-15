@@ -16,13 +16,8 @@ export type AllSchedules = Record<string, ScheduleMap>;
 // pilotId → date → 기타 사유 (파일럿 직접 입력)
 export type AllScheduleNotes = Record<string, Record<string, string>>;
 
-// TODO: API — PILOTS_META 하드코딩 → GET /api/pilots (id, name, initials, avatarColor) 로 교체
-export const PILOTS_META: PilotMeta[] = [
-  { id: "p1", name: "박구름", initials: "박", avatarColor: "#2A7AE2" },
-  { id: "p2", name: "김하늘", initials: "김", avatarColor: "#10B981" },
-  { id: "p3", name: "이바람", initials: "이", avatarColor: "#FF8A00" },
-  { id: "p4", name: "최하람", initials: "최", avatarColor: "#8B5CF6" },
-];
+// API 기반으로 교체됨 - /api/pilots 사용
+export const PILOTS_META: PilotMeta[] = [];
 
 export const SCHEDULE_CFG: Record<ScheduleStatus, { label: string; color: string; bg: string }> = {
   working: { label: "출근",  color: "#2A7AE2", bg: "#EFF6FF" },
@@ -31,157 +26,99 @@ export const SCHEDULE_CFG: Record<ScheduleStatus, { label: string; color: string
   etc:     { label: "기타",  color: "#8B5CF6", bg: "#F5F3FF" },
 };
 
-const STORAGE_KEY = "gureum_schedule";
-const EVENT_KEY   = "gureum_schedule_update";
+const EVENT_KEY = "gureum_schedule_update";
 
-// 관리자 파일럿장 Mock 데이터와 동일한 기본값
-const DEFAULT_SCHEDULES: AllSchedules = {
-  p1: {
-    "2026-05-01": "working", "2026-05-02": "working", "2026-05-03": "off",
-    "2026-05-04": "working", "2026-05-05": "working", "2026-05-06": "working",
-    "2026-05-07": "working", "2026-05-08": "standby", "2026-05-09": "working",
-    "2026-05-10": "off",     "2026-05-11": "working", "2026-05-12": "working",
-    "2026-05-13": "working", "2026-05-14": "working", "2026-05-15": "off",
-    "2026-05-16": "working", "2026-05-17": "off",     "2026-05-18": "working",
-    "2026-05-19": "working", "2026-05-20": "standby", "2026-05-21": "working",
-    "2026-05-22": "working", "2026-05-23": "working", "2026-05-24": "off",
-    "2026-05-25": "working", "2026-05-26": "working", "2026-05-27": "working",
-    "2026-05-28": "working", "2026-05-29": "working", "2026-05-30": "off",
-    "2026-05-31": "working",
-  },
-  p2: {
-    "2026-05-01": "working", "2026-05-02": "standby", "2026-05-03": "off",
-    "2026-05-04": "working", "2026-05-05": "working", "2026-05-06": "etc",
-    "2026-05-07": "etc",   "2026-05-08": "working", "2026-05-09": "working",
-    "2026-05-10": "off",     "2026-05-11": "standby", "2026-05-12": "working",
-    "2026-05-13": "working", "2026-05-14": "working", "2026-05-15": "off",
-    "2026-05-16": "working", "2026-05-17": "working", "2026-05-18": "off",
-    "2026-05-19": "working", "2026-05-20": "working", "2026-05-21": "working",
-    "2026-05-22": "off",     "2026-05-23": "working", "2026-05-24": "working",
-    "2026-05-25": "off",     "2026-05-26": "working", "2026-05-27": "working",
-    "2026-05-28": "working", "2026-05-29": "off",     "2026-05-30": "working",
-    "2026-05-31": "working",
-  },
-  p3: {
-    "2026-05-01": "standby", "2026-05-02": "working", "2026-05-03": "off",
-    "2026-05-04": "standby", "2026-05-05": "working", "2026-05-06": "working",
-    "2026-05-07": "working", "2026-05-08": "off",     "2026-05-09": "standby",
-    "2026-05-10": "off",     "2026-05-11": "working", "2026-05-12": "working",
-    "2026-05-13": "working", "2026-05-14": "off",     "2026-05-15": "working",
-    "2026-05-16": "working", "2026-05-17": "working", "2026-05-18": "off",
-    "2026-05-19": "standby", "2026-05-20": "working", "2026-05-21": "working",
-    "2026-05-22": "off",     "2026-05-23": "working", "2026-05-24": "working",
-    "2026-05-25": "working", "2026-05-26": "off",     "2026-05-27": "working",
-    "2026-05-28": "working", "2026-05-29": "working", "2026-05-30": "off",
-    "2026-05-31": "standby",
-  },
-  p4: {
-    "2026-05-01": "etc",   "2026-05-02": "etc",   "2026-05-03": "etc",
-    "2026-05-04": "etc",   "2026-05-05": "etc",   "2026-05-06": "etc",
-    "2026-05-07": "etc",   "2026-05-08": "etc",   "2026-05-09": "etc",
-    "2026-05-10": "etc",   "2026-05-11": "etc",   "2026-05-12": "etc",
-    "2026-05-13": "etc",   "2026-05-14": "etc",   "2026-05-15": "etc",
-    "2026-05-16": "working", "2026-05-17": "working", "2026-05-18": "off",
-    "2026-05-19": "working", "2026-05-20": "working", "2026-05-21": "working",
-    "2026-05-22": "off",     "2026-05-23": "working", "2026-05-24": "working",
-    "2026-05-25": "working", "2026-05-26": "off",     "2026-05-27": "working",
-    "2026-05-28": "working", "2026-05-29": "working", "2026-05-30": "off",
-    "2026-05-31": "working",
-  },
-};
+// ── 월별 캐시 ─────────────────────────────────────────────────────
+const _monthCache: Record<string, AllSchedules> = {};
 
-function migrateSchedules(data: AllSchedules): AllSchedules {
-  // "leave" → "etc" 마이그레이션 (구버전 localStorage 호환)
-  let dirty = false;
-  const result: AllSchedules = {};
-  for (const [pid, dates] of Object.entries(data)) {
-    result[pid] = {};
-    for (const [date, status] of Object.entries(dates)) {
-      const s = status === ("leave" as string) ? "etc" : (status as ScheduleStatus);
-      if (s !== status) dirty = true;
-      result[pid][date] = s;
-    }
-  }
-  if (dirty) localStorage.setItem(STORAGE_KEY, JSON.stringify(result));
-  return result;
-}
-
-// TODO: API — 스케줄 load/save localStorage → API 교체
-// load()                 → GET  /api/schedules
-// save()                 → PATCH /api/schedules/:pilotId/:date
-// updatePilotSchedule()  → PATCH /api/schedules/:pilotId/:date { status }
-// updatePilotNote()      → PATCH /api/schedules/:pilotId/:date/note { note }
-
-function load(): AllSchedules {
-  if (typeof window === "undefined") return DEFAULT_SCHEDULES;
+async function loadMonth(yearMonth: string): Promise<AllSchedules> {
+  if (_monthCache[yearMonth]) return _monthCache[yearMonth];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_SCHEDULES;
-    return migrateSchedules(JSON.parse(raw));
-  } catch {
-    return DEFAULT_SCHEDULES;
-  }
-}
-
-function save(data: AllSchedules) {
-  // TODO: API — localStorage.setItem → API 호출로 교체
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  window.dispatchEvent(new Event(EVENT_KEY));
-}
-
-export function getSchedules(): AllSchedules {
-  return load();
-}
-
-export function getPilotSchedule(pilotId: string): ScheduleMap {
-  return load()[pilotId] ?? {};
-}
-
-export function updatePilotSchedule(pilotId: string, date: string, status: ScheduleStatus) {
-  const data = load();
-  if (!data[pilotId]) data[pilotId] = {};
-  data[pilotId][date] = status;
-  save(data);
-}
-
-// ── 기타 사유 노트 ─────────────────────────────────────────────────
-const NOTES_KEY = "gureum_schedule_notes";
-
-function loadNotes(): AllScheduleNotes {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem(NOTES_KEY);
-    return raw ? JSON.parse(raw) : {};
+    const res = await fetch(`/api/schedules?year_month=${yearMonth}`);
+    if (!res.ok) return {};
+    const data = await res.json();
+    _monthCache[yearMonth] = data;
+    return data;
   } catch {
     return {};
   }
 }
 
-function saveNotes(data: AllScheduleNotes) {
-  localStorage.setItem(NOTES_KEY, JSON.stringify(data));
+// ── notes 캐시 (API 없음, 클라이언트 캐시만) ──────────────────────
+const _notesCache: AllScheduleNotes = {};
+
+// ── 공개 함수들 ───────────────────────────────────────────────────
+
+export function getSchedules(): AllSchedules {
+  // 동기적으로 현재 캐시에서 합쳐서 반환
+  const merged: AllSchedules = {};
+  for (const m of Object.values(_monthCache)) {
+    for (const [pid, dates] of Object.entries(m)) {
+      merged[pid] = { ...(merged[pid] ?? {}), ...dates };
+    }
+  }
+  return merged;
+}
+
+export function getPilotSchedule(pilotId: string): ScheduleMap {
+  return getSchedules()[pilotId] ?? {};
+}
+
+export async function updatePilotSchedule(pilotId: string, date: string, status: ScheduleStatus) {
+  try {
+    await fetch("/api/schedules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pilotId, date, status }),
+    });
+  } catch {
+    // 오류 시에도 캐시는 업데이트
+  }
+  // 캐시 업데이트
+  const yearMonth = date.slice(0, 7);
+  if (!_monthCache[yearMonth]) _monthCache[yearMonth] = {};
+  if (!_monthCache[yearMonth][pilotId]) _monthCache[yearMonth][pilotId] = {};
+  _monthCache[yearMonth][pilotId][date] = status;
   window.dispatchEvent(new Event(EVENT_KEY));
 }
 
-export function updatePilotNote(pilotId: string, date: string, note: string) {
-  const data = loadNotes();
-  if (!data[pilotId]) data[pilotId] = {};
-  if (note.trim()) {
-    data[pilotId][date] = note.trim();
-  } else {
-    delete data[pilotId][date];
+// ── 기타 사유 노트 ─────────────────────────────────────────────────
+
+export async function updatePilotNote(pilotId: string, date: string, note: string) {
+  // 현재 status 파악 (캐시에서)
+  const yearMonth = date.slice(0, 7);
+  const currentStatus: ScheduleStatus =
+    _monthCache[yearMonth]?.[pilotId]?.[date] ?? "etc";
+
+  try {
+    await fetch("/api/schedules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pilotId, date, status: currentStatus, memo: note }),
+    });
+  } catch {
+    // 오류 시에도 로컬 캐시는 업데이트
   }
-  saveNotes(data);
+
+  // notes 캐시 업데이트
+  if (!_notesCache[pilotId]) _notesCache[pilotId] = {};
+  if (note.trim()) {
+    _notesCache[pilotId][date] = note.trim();
+  } else {
+    delete _notesCache[pilotId][date];
+  }
+  window.dispatchEvent(new Event(EVENT_KEY));
 }
 
 export function getScheduleNotes(): AllScheduleNotes {
-  return loadNotes();
+  return _notesCache;
 }
 
 export function useScheduleNotes() {
   const [notes, setNotes] = useState<AllScheduleNotes>({});
 
   useEffect(() => {
-    const refresh = () => setNotes(loadNotes());
+    const refresh = () => setNotes({ ..._notesCache });
     refresh();
     window.addEventListener(EVENT_KEY, refresh);
     return () => window.removeEventListener(EVENT_KEY, refresh);
@@ -191,11 +128,33 @@ export function useScheduleNotes() {
 }
 
 export function useSchedules() {
-  const [schedules, setSchedules] = useState<AllSchedules>(DEFAULT_SCHEDULES);
+  const [schedules, setSchedules] = useState<AllSchedules>({});
 
   useEffect(() => {
-    const refresh = () => setSchedules(load());
-    refresh();
+    const now = new Date();
+    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const nextDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const nextMonth = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}`;
+
+    Promise.all([loadMonth(thisMonth), loadMonth(nextMonth)]).then(([m1, m2]) => {
+      // deep merge: pilotId → { ...m1[pilotId], ...m2[pilotId] }
+      const merged: AllSchedules = {};
+      for (const pid of new Set([...Object.keys(m1), ...Object.keys(m2)])) {
+        merged[pid] = { ...(m1[pid] ?? {}), ...(m2[pid] ?? {}) };
+      }
+      setSchedules(merged);
+    });
+
+    const refresh = () => {
+      // 캐시에서 재구성
+      const merged: AllSchedules = {};
+      for (const m of Object.values(_monthCache)) {
+        for (const [pid, dates] of Object.entries(m)) {
+          merged[pid] = { ...(merged[pid] ?? {}), ...dates };
+        }
+      }
+      setSchedules({ ...merged });
+    };
     window.addEventListener(EVENT_KEY, refresh);
     return () => window.removeEventListener(EVENT_KEY, refresh);
   }, []);

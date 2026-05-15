@@ -8,8 +8,7 @@ export interface FaqEntry {
   a: string;
 }
 
-const STORE_KEY   = "gureum_faqs";
-const EVENT_KEY   = "gureum_faqs_update";
+const EVENT_KEY = "gureum_faqs_update";
 
 // ── 기본 FAQ 데이터 ────────────────────────────────────────────────
 const DEFAULT_FAQS: FaqEntry[] = [
@@ -22,55 +21,142 @@ const DEFAULT_FAQS: FaqEntry[] = [
   { id: "faq-7", q: "예약금은 얼마인가요?", a: "예약 시 상품 금액의 30%를 예약금으로 결제하며, 나머지는 현장에서 결제하시면 됩니다. 카드·현금·계좌이체 모두 가능합니다." },
 ];
 
-// ── helpers ───────────────────────────────────────────────────────
-function load(): FaqEntry[] {
-  if (typeof window === "undefined") return DEFAULT_FAQS;
+// ── in-memory cache ────────────────────────────────────────────────
+let _cache: FaqEntry[] | null = null;
+
+// ── API helpers ────────────────────────────────────────────────────
+
+async function loadFromApi(): Promise<FaqEntry[]> {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
-    return raw ? (JSON.parse(raw) as FaqEntry[]) : DEFAULT_FAQS;
+    const res = await fetch("/api/faqs");
+    if (!res.ok) return DEFAULT_FAQS;
+    const data = await res.json();
+    if (!Array.isArray(data)) return DEFAULT_FAQS;
+    const faqs: FaqEntry[] = data.map((row: Record<string, unknown>) => ({
+      id: String(row.id ?? ""),
+      q: String(row.q ?? ""),
+      a: String(row.a ?? ""),
+    }));
+    _cache = faqs;
+    return faqs;
   } catch {
     return DEFAULT_FAQS;
   }
 }
 
-function save(faqs: FaqEntry[]) {
-  localStorage.setItem(STORE_KEY, JSON.stringify(faqs));
-  window.dispatchEvent(new Event(EVENT_KEY));
+function dispatchUpdate() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(EVENT_KEY));
 }
 
 // ── API ───────────────────────────────────────────────────────────
-export function addFaq(entry: Omit<FaqEntry, "id">): void {
-  const faqs = load();
-  faqs.push({ ...entry, id: `faq-${Date.now()}` });
-  save(faqs);
+
+export async function addFaq(entry: Omit<FaqEntry, "id">): Promise<void> {
+  const currentFaqs = _cache ?? DEFAULT_FAQS;
+  // optimistic update (임시 id)
+  const tempId = `faq-${Date.now()}`;
+  _cache = [...currentFaqs, { ...entry, id: tempId }];
+  dispatchUpdate();
+  try {
+    const res = await fetch("/api/faqs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ q: entry.q, a: entry.a, sort_order: currentFaqs.length }),
+    });
+    if (res.ok) {
+      const created = await res.json();
+      // 임시 id를 서버 id로 교체
+      _cache = (_cache ?? []).map((f) =>
+        f.id === tempId ? { ...f, id: String(created.id ?? tempId) } : f
+      );
+      dispatchUpdate();
+    }
+  } catch {
+    /* 실패해도 캐시는 유지 */
+  }
 }
 
-export function deleteFaq(id: string): void {
-  save(load().filter((f) => f.id !== id));
+export async function deleteFaq(id: string): Promise<void> {
+  // optimistic update
+  _cache = (_cache ?? DEFAULT_FAQS).filter((f) => f.id !== id);
+  dispatchUpdate();
+  try {
+    await fetch(`/api/faqs/${id}`, { method: "DELETE" });
+  } catch {
+    /* 실패해도 캐시는 유지 */
+  }
 }
 
-export function updateFaq(id: string, patch: Partial<Omit<FaqEntry, "id">>): void {
-  save(load().map((f) => (f.id === id ? { ...f, ...patch } : f)));
+export async function updateFaq(
+  id: string,
+  patch: Partial<Omit<FaqEntry, "id">>
+): Promise<void> {
+  // optimistic update
+  _cache = (_cache ?? DEFAULT_FAQS).map((f) => (f.id === id ? { ...f, ...patch } : f));
+  dispatchUpdate();
+  try {
+    await fetch(`/api/faqs/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+  } catch {
+    /* 실패해도 캐시는 유지 */
+  }
 }
 
-export function moveFaq(id: string, dir: "up" | "down"): void {
-  const faqs = load();
-  const idx  = faqs.findIndex((f) => f.id === id);
+export async function moveFaq(id: string, dir: "up" | "down"): Promise<void> {
+  const faqs = [...(_cache ?? DEFAULT_FAQS)];
+  const idx = faqs.findIndex((f) => f.id === id);
   if (idx < 0) return;
   const next = dir === "up" ? idx - 1 : idx + 1;
   if (next < 0 || next >= faqs.length) return;
+
   [faqs[idx], faqs[next]] = [faqs[next], faqs[idx]];
-  save(faqs);
+  _cache = faqs;
+  dispatchUpdate();
+
+  // 순서가 바뀐 두 항목의 sort_order를 서버에 반영
+  try {
+    await Promise.all([
+      fetch(`/api/faqs/${faqs[idx].id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sort_order: idx }),
+      }),
+      fetch(`/api/faqs/${faqs[next].id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sort_order: next }),
+      }),
+    ]);
+  } catch {
+    /* 실패해도 캐시는 유지 */
+  }
 }
 
 // ── hook ──────────────────────────────────────────────────────────
+
 export function useFaqs(): FaqEntry[] {
-  const [faqs, setFaqs] = useState<FaqEntry[]>([]);
+  const [faqs, setFaqs] = useState<FaqEntry[]>(_cache ?? []);
+
   useEffect(() => {
-    const refresh = () => setFaqs(load());
-    refresh();
+    let mounted = true;
+
+    if (!_cache) {
+      loadFromApi().then((d) => {
+        if (mounted) setFaqs(d);
+      });
+    }
+
+    const refresh = () => {
+      if (_cache) setFaqs([..._cache]);
+    };
     window.addEventListener(EVENT_KEY, refresh);
-    return () => window.removeEventListener(EVENT_KEY, refresh);
+    return () => {
+      mounted = false;
+      window.removeEventListener(EVENT_KEY, refresh);
+    };
   }, []);
+
   return faqs;
 }

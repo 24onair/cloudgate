@@ -10,94 +10,157 @@ export interface HeroBgConfig {
 }
 
 // ── 히어로 섹션 ──────────────────────────────────────────────────
-const HERO_KEY       = "gureum_hero_bg";
 const HERO_EVENT_KEY = "gureum_hero_bg_update";
-
 const HERO_DEFAULT: HeroBgConfig = { imageDataUrl: null, enabled: false, overlayOpacity: 65, objectPosition: "50% 50%" };
 
-function loadHero(): HeroBgConfig {
-  if (typeof window === "undefined") return HERO_DEFAULT;
-  try { const raw = localStorage.getItem(HERO_KEY); return raw ? { ...HERO_DEFAULT, ...JSON.parse(raw) } : HERO_DEFAULT; }
-  catch { return HERO_DEFAULT; }
-}
-function saveHero(c: HeroBgConfig) {
-  localStorage.setItem(HERO_KEY, JSON.stringify(c));
-  window.dispatchEvent(new Event(HERO_EVENT_KEY));
+let _heroCache: HeroBgConfig | null = null;
+
+async function loadHeroFromApi(): Promise<HeroBgConfig> {
+  try {
+    const res = await fetch("/api/site-settings/hero_bg");
+    if (!res.ok) return HERO_DEFAULT;
+    const json = await res.json();
+    if (!json || !json.value) return HERO_DEFAULT;
+    _heroCache = { ...HERO_DEFAULT, ...json.value };
+    return _heroCache!;
+  } catch {
+    return HERO_DEFAULT;
+  }
 }
 
-export function getHeroBg(): HeroBgConfig { return loadHero(); }
-export function setHeroBg(config: Partial<HeroBgConfig>) { saveHero({ ...loadHero(), ...config }); }
-export function clearHeroBgImage() { saveHero({ ...loadHero(), imageDataUrl: null, enabled: false }); }
+async function saveHeroToApi(data: HeroBgConfig): Promise<void> {
+  _heroCache = data;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(HERO_EVENT_KEY));
+  try {
+    await fetch("/api/site-settings/hero_bg", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: data }),
+    });
+  } catch { /* ignore */ }
+}
+
+export function getHeroBg(): HeroBgConfig { return _heroCache ?? HERO_DEFAULT; }
+export function setHeroBg(config: Partial<HeroBgConfig>) { saveHeroToApi({ ...(_heroCache ?? HERO_DEFAULT), ...config }); }
+export function clearHeroBgImage() { saveHeroToApi({ ...(_heroCache ?? HERO_DEFAULT), imageDataUrl: null, enabled: false }); }
 
 export function useHeroBg() {
-  const [config, setConfig] = useState<HeroBgConfig>(HERO_DEFAULT);
+  const [config, setConfig] = useState<HeroBgConfig>(_heroCache ?? HERO_DEFAULT);
   useEffect(() => {
-    const refresh = () => setConfig(loadHero());
-    refresh();
+    let mounted = true;
+    if (!_heroCache) {
+      loadHeroFromApi().then((d) => { if (mounted) setConfig(d); });
+    }
+    const refresh = () => { if (_heroCache) setConfig({ ..._heroCache! }); };
     window.addEventListener(HERO_EVENT_KEY, refresh);
-    return () => window.removeEventListener(HERO_EVENT_KEY, refresh);
+    return () => {
+      mounted = false;
+      window.removeEventListener(HERO_EVENT_KEY, refresh);
+    };
   }, []);
   return config;
 }
 
 // ── CTA 섹션 ─────────────────────────────────────────────────────
-const CTA_KEY       = "gureum_cta_bg";
 const CTA_EVENT_KEY = "gureum_cta_bg_update";
-
 const CTA_DEFAULT: HeroBgConfig = { imageDataUrl: null, enabled: false, overlayOpacity: 70, objectPosition: "50% 50%" };
 
-function loadCta(): HeroBgConfig {
-  if (typeof window === "undefined") return CTA_DEFAULT;
-  try { const raw = localStorage.getItem(CTA_KEY); return raw ? { ...CTA_DEFAULT, ...JSON.parse(raw) } : CTA_DEFAULT; }
-  catch { return CTA_DEFAULT; }
-}
-function saveCta(c: HeroBgConfig) {
-  localStorage.setItem(CTA_KEY, JSON.stringify(c));
-  window.dispatchEvent(new Event(CTA_EVENT_KEY));
+let _ctaCache: HeroBgConfig | null = null;
+
+async function loadCtaFromApi(): Promise<HeroBgConfig> {
+  try {
+    const res = await fetch("/api/site-settings/cta_bg");
+    if (!res.ok) return CTA_DEFAULT;
+    const json = await res.json();
+    if (!json || !json.value) return CTA_DEFAULT;
+    _ctaCache = { ...CTA_DEFAULT, ...json.value };
+    return _ctaCache!;
+  } catch {
+    return CTA_DEFAULT;
+  }
 }
 
-export function getCtaBg(): HeroBgConfig { return loadCta(); }
-export function setCtaBg(config: Partial<HeroBgConfig>) { saveCta({ ...loadCta(), ...config }); }
-export function clearCtaBgImage() { saveCta({ ...loadCta(), imageDataUrl: null, enabled: false }); }
+async function saveCtaToApi(data: HeroBgConfig): Promise<void> {
+  _ctaCache = data;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(CTA_EVENT_KEY));
+  try {
+    await fetch("/api/site-settings/cta_bg", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: data }),
+    });
+  } catch { /* ignore */ }
+}
+
+export function getCtaBg(): HeroBgConfig { return _ctaCache ?? CTA_DEFAULT; }
+export function setCtaBg(config: Partial<HeroBgConfig>) { saveCtaToApi({ ...(_ctaCache ?? CTA_DEFAULT), ...config }); }
+export function clearCtaBgImage() { saveCtaToApi({ ...(_ctaCache ?? CTA_DEFAULT), imageDataUrl: null, enabled: false }); }
 
 export function useCtaBg() {
-  const [config, setConfig] = useState<HeroBgConfig>(CTA_DEFAULT);
+  const [config, setConfig] = useState<HeroBgConfig>(_ctaCache ?? CTA_DEFAULT);
   useEffect(() => {
-    const refresh = () => setConfig(loadCta());
-    refresh();
+    let mounted = true;
+    if (!_ctaCache) {
+      loadCtaFromApi().then((d) => { if (mounted) setConfig(d); });
+    }
+    const refresh = () => { if (_ctaCache) setConfig({ ..._ctaCache! }); };
     window.addEventListener(CTA_EVENT_KEY, refresh);
-    return () => window.removeEventListener(CTA_EVENT_KEY, refresh);
+    return () => {
+      mounted = false;
+      window.removeEventListener(CTA_EVENT_KEY, refresh);
+    };
   }, []);
   return config;
 }
 
 // ── FAQ 섹션 ──────────────────────────────────────────────────────
-const FAQ_KEY       = "gureum_faq_bg";
 const FAQ_EVENT_KEY = "gureum_faq_bg_update";
-
 const FAQ_DEFAULT: HeroBgConfig = { imageDataUrl: null, enabled: false, overlayOpacity: 60, objectPosition: "50% 50%" };
 
-function loadFaq(): HeroBgConfig {
-  if (typeof window === "undefined") return FAQ_DEFAULT;
-  try { const raw = localStorage.getItem(FAQ_KEY); return raw ? { ...FAQ_DEFAULT, ...JSON.parse(raw) } : FAQ_DEFAULT; }
-  catch { return FAQ_DEFAULT; }
-}
-function saveFaq(c: HeroBgConfig) {
-  localStorage.setItem(FAQ_KEY, JSON.stringify(c));
-  window.dispatchEvent(new Event(FAQ_EVENT_KEY));
+let _faqCache: HeroBgConfig | null = null;
+
+async function loadFaqFromApi(): Promise<HeroBgConfig> {
+  try {
+    const res = await fetch("/api/site-settings/faq_bg");
+    if (!res.ok) return FAQ_DEFAULT;
+    const json = await res.json();
+    if (!json || !json.value) return FAQ_DEFAULT;
+    _faqCache = { ...FAQ_DEFAULT, ...json.value };
+    return _faqCache!;
+  } catch {
+    return FAQ_DEFAULT;
+  }
 }
 
-export function getFaqBg(): HeroBgConfig { return loadFaq(); }
-export function setFaqBg(config: Partial<HeroBgConfig>) { saveFaq({ ...loadFaq(), ...config }); }
-export function clearFaqBgImage() { saveFaq({ ...loadFaq(), imageDataUrl: null, enabled: false }); }
+async function saveFaqToApi(data: HeroBgConfig): Promise<void> {
+  _faqCache = data;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(FAQ_EVENT_KEY));
+  try {
+    await fetch("/api/site-settings/faq_bg", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: data }),
+    });
+  } catch { /* ignore */ }
+}
+
+export function getFaqBg(): HeroBgConfig { return _faqCache ?? FAQ_DEFAULT; }
+export function setFaqBg(config: Partial<HeroBgConfig>) { saveFaqToApi({ ...(_faqCache ?? FAQ_DEFAULT), ...config }); }
+export function clearFaqBgImage() { saveFaqToApi({ ...(_faqCache ?? FAQ_DEFAULT), imageDataUrl: null, enabled: false }); }
 
 export function useFaqBg() {
-  const [config, setConfig] = useState<HeroBgConfig>(FAQ_DEFAULT);
+  const [config, setConfig] = useState<HeroBgConfig>(_faqCache ?? FAQ_DEFAULT);
   useEffect(() => {
-    const refresh = () => setConfig(loadFaq());
-    refresh();
+    let mounted = true;
+    if (!_faqCache) {
+      loadFaqFromApi().then((d) => { if (mounted) setConfig(d); });
+    }
+    const refresh = () => { if (_faqCache) setConfig({ ..._faqCache! }); };
     window.addEventListener(FAQ_EVENT_KEY, refresh);
-    return () => window.removeEventListener(FAQ_EVENT_KEY, refresh);
+    return () => {
+      mounted = false;
+      window.removeEventListener(FAQ_EVENT_KEY, refresh);
+    };
   }, []);
   return config;
 }

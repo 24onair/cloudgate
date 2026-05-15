@@ -17,97 +17,160 @@ export interface Review {
   createdAt: string;    // ISO
 }
 
-const STORE_KEY = "gureum_reviews";
 const EVENT_KEY = "gureum_reviews_update";
 
-// 초기 시드 데이터 (기존 하드코딩 후기 → approved)
-const SEED: Review[] = [
-  {
-    id: "r1", name: "이수진", avatar: "이", date: "2026-04-28", rating: 5, product: "베이직",
-    text: "생애 처음 패러글라이딩인데 파일럿분이 너무 친절하게 설명해 주셔서 무서움 없이 즐길 수 있었어요. 하늘에서 보이는 뷰가 정말 잊지 못할 것 같아요!",
-    images: [], status: "approved", createdAt: "2026-04-28T10:00:00Z",
-  },
-  {
-    id: "r2", name: "최현우", avatar: "최", date: "2026-04-29", rating: 5, product: "익스트림",
-    text: "스릴 넘치는 비행이었습니다! 고고도 기동할 때 심장이 쫄깃했어요. 사진 패키지도 추가했는데 고프로 영상 퀄리티가 대박입니다. 꼭 추천해요.",
-    images: [], status: "approved", createdAt: "2026-04-29T10:00:00Z",
-  },
-  {
-    id: "r3", name: "박지연", avatar: "박", date: "2026-04-30", rating: 5, product: "VIP",
-    text: "남자친구 생일 선물로 VIP 예약했는데 완전 대성공이었어요. 파노라마 코스 뷰가 진짜 말문이 막혔고 VIP 라운지에서 쉬는 것도 좋았어요.",
-    images: [], status: "approved", createdAt: "2026-04-30T10:00:00Z",
-  },
-  {
-    id: "r4", name: "정성민", avatar: "정", date: "2026-05-01", rating: 4, product: "베이직",
-    text: "날씨 걱정했는데 당일 비행 가능 문자 받고 너무 좋았어요. 안전 교육을 꼼꼼하게 해주셔서 믿음이 갔고 비행 자체도 너무 즐거웠습니다.",
-    images: [], status: "approved", createdAt: "2026-05-01T09:00:00Z",
-  },
-  {
-    id: "r5", name: "한미영", avatar: "한", date: "2026-05-01", rating: 5, product: "익스트림",
-    text: "버킷리스트 달성! 두 손 놓고 비행하는 순간이 평생 기억에 남을 것 같아요. 재예약 의사 200%입니다. 다음엔 VIP 도전할게요!",
-    images: [], status: "approved", createdAt: "2026-05-01T11:00:00Z",
-  },
-  {
-    id: "r6", name: "김도현", avatar: "김", date: "2026-04-27", rating: 5, product: "VIP",
-    text: "회사 워크숍으로 단체 예약했어요. 직원들 반응이 최고였고 안전 관리도 철저해서 걱정 없이 즐길 수 있었습니다. 구름상회 강력 추천합니다!",
-    images: [], status: "approved", createdAt: "2026-04-27T15:00:00Z",
-  },
-];
+// ── 캐시 ─────────────────────────────────────────────────────────
+let _reviewCache: Review[] | null = null;
 
-function load(): Review[] {
-  if (typeof window === "undefined") return SEED;
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    return raw ? JSON.parse(raw) : SEED;
-  } catch {
-    return SEED;
-  }
+function mapRow(row: {
+  id: string;
+  name: string;
+  date?: string;
+  rating: number;
+  product: string;
+  body: string;
+  images?: string[];
+  status: ReviewStatus;
+  created_at: string;
+}): Review {
+  return {
+    id: row.id,
+    name: row.name,
+    avatar: row.name.charAt(0),
+    date: row.date ?? row.created_at.slice(0, 10),
+    rating: row.rating,
+    product: row.product,
+    text: row.body,
+    images: row.images ?? [],
+    status: row.status,
+    createdAt: row.created_at,
+  };
 }
 
-function save(reviews: Review[]) {
-  localStorage.setItem(STORE_KEY, JSON.stringify(reviews));
-  window.dispatchEvent(new Event(EVENT_KEY));
+async function fetchReviews(status?: ReviewStatus): Promise<Review[]> {
+  try {
+    const url = status ? `/api/reviews?status=${status}` : "/api/reviews";
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const rows = await res.json();
+    return (rows as Parameters<typeof mapRow>[0][]).map(mapRow);
+  } catch {
+    return [];
+  }
 }
 
 // ── CRUD ─────────────────────────────────────────────────────────
 
-export function addReview(r: Omit<Review, "id" | "avatar" | "createdAt" | "status">) {
-  const reviews = load();
-  const newReview: Review = {
+export async function addReview(r: Omit<Review, "id" | "avatar" | "createdAt" | "status">) {
+  const body = {
+    name: r.name,
+    rating: r.rating,
+    product: r.product,
+    body: r.text,
+    images: r.images,
+    status: "pending" as ReviewStatus,
+  };
+
+  let newReview: Review = {
     ...r,
     id: `r${Date.now()}`,
     avatar: r.name.charAt(0),
     status: "pending",
     createdAt: new Date().toISOString(),
   };
-  save([newReview, ...reviews]);
+
+  try {
+    const res = await fetch("/api/reviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      const row = await res.json();
+      newReview = mapRow(row);
+    }
+  } catch {
+    // 오류 시 로컬 생성 ID 사용
+  }
+
+  if (_reviewCache !== null) {
+    _reviewCache = [newReview, ..._reviewCache];
+  }
+  window.dispatchEvent(new Event(EVENT_KEY));
 }
 
-export function setReviewStatus(id: string, status: ReviewStatus) {
-  save(load().map((r) => r.id === id ? { ...r, status } : r));
+export async function updateReviewStatus(id: string, status: ReviewStatus) {
+  try {
+    await fetch(`/api/reviews/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+  } catch {
+    // 오류 시에도 캐시 업데이트
+  }
+  if (_reviewCache !== null) {
+    _reviewCache = _reviewCache.map((r) => (r.id === id ? { ...r, status } : r));
+  }
+  window.dispatchEvent(new Event(EVENT_KEY));
 }
 
-export function deleteReview(id: string) {
-  save(load().filter((r) => r.id !== id));
+// 기존 setReviewStatus 호환 alias
+export const setReviewStatus = updateReviewStatus;
+
+export async function deleteReview(id: string) {
+  try {
+    await fetch(`/api/reviews/${id}`, { method: "DELETE" });
+  } catch {
+    // 오류 시에도 캐시에서 제거
+  }
+  if (_reviewCache !== null) {
+    _reviewCache = _reviewCache.filter((r) => r.id !== id);
+  }
+  window.dispatchEvent(new Event(EVENT_KEY));
 }
 
 export function getApprovedReviews(): Review[] {
-  return load().filter((r) => r.status === "approved");
+  return (_reviewCache ?? []).filter((r) => r.status === "approved");
 }
 
 // ── Hooks ────────────────────────────────────────────────────────
 
 export function useReviews(status?: ReviewStatus): Review[] {
   const [reviews, setReviews] = useState<Review[]>([]);
+
   useEffect(() => {
+    fetchReviews().then((data) => {
+      _reviewCache = data;
+      setReviews(status ? data.filter((r) => r.status === status) : data);
+    });
+
     const refresh = () => {
-      const all = load();
-      setReviews(status ? all.filter((r) => r.status === status) : all);
+      const all = _reviewCache ?? [];
+      setReviews(status ? all.filter((r) => r.status === status) : [...all]);
     };
-    refresh();
     window.addEventListener(EVENT_KEY, refresh);
     return () => window.removeEventListener(EVENT_KEY, refresh);
   }, [status]);
+
+  return reviews;
+}
+
+export function useApprovedReviews(): Review[] {
+  const [reviews, setReviews] = useState<Review[]>([]);
+
+  useEffect(() => {
+    fetchReviews("approved").then((data) => {
+      setReviews(data);
+    });
+
+    const refresh = () => {
+      setReviews((_reviewCache ?? []).filter((r) => r.status === "approved"));
+    };
+    window.addEventListener(EVENT_KEY, refresh);
+    return () => window.removeEventListener(EVENT_KEY, refresh);
+  }, []);
+
   return reviews;
 }
 

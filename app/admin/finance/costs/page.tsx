@@ -297,21 +297,19 @@ export default function CostsPage() {
   }, [handleFile]);
 
   // ── 변동비 저장 ───────────────────────────────────────────────
-  function handleSave() {
+  async function handleSave() {
     if (!form.name.trim() || !form.amount) return;
     setSaving(true);
-    setTimeout(() => {
-      const entry = addCost({
-        date: form.date, category: form.category, costType: form.costType,
-        name: form.name.trim(), amount: Number(form.amount.replace(/,/g, "")),
-        memo: form.memo.trim(), receiptDataUrl: receiptPreview,
-      });
-      setSavedId(entry.id);
-      setForm({ date: TODAY, category: activeCategories[0]?.id ?? "fuel", costType: "variable", name: "", amount: "", memo: "" });
-      setReceiptPreview(null);
-      setSaving(false);
-      setTimeout(() => setSavedId(null), 2000);
-    }, 400);
+    const entry = await addCost({
+      date: form.date, category: form.category, costType: form.costType,
+      name: form.name.trim(), amount: Number(form.amount.replace(/,/g, "")),
+      memo: form.memo.trim(), receiptDataUrl: receiptPreview,
+    });
+    setSavedId(entry.id);
+    setForm({ date: TODAY, category: activeCategories[0]?.id ?? "fuel", costType: "variable", name: "", amount: "", memo: "" });
+    setReceiptPreview(null);
+    setSaving(false);
+    setTimeout(() => setSavedId(null), 2000);
   }
 
   function handleAmountChange(raw: string) {

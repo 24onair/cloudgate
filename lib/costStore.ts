@@ -20,13 +20,7 @@ export interface CostEntry {
   createdAt: string;
 }
 
-// TODO: API — 비용 항목 localStorage → API 교체
-// load()       → GET    /api/costs (query: ?date=YYYY-MM-DD)
-// addCost()    → POST   /api/costs
-// removeCost() → DELETE /api/costs/:id
-
-const STORAGE_KEY = "gureum_costs";
-const EVENT_KEY   = "gureum_costs_update";
+const EVENT_KEY = "gureum_costs_update";
 
 // CATEGORY_META — 하위 호환용, categoryStore에서 동적으로 읽음
 export const CATEGORY_META = new Proxy({} as Record<string, { label: string; color: string }>, {
@@ -35,56 +29,132 @@ export const CATEGORY_META = new Proxy({} as Record<string, { label: string; col
   },
 });
 
-// ── CRUD ────────────────────────────────────────────────────────
-function load(): CostEntry[] {
-  if (typeof window === "undefined") return [];
+// ── 캐시 ───────────────────────────────────────────────────────────
+let _costCache: CostEntry[] | null = null;
+
+function currentYearMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+async function fetchCosts(month: string): Promise<CostEntry[]> {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+    const res = await fetch(`/api/costs?month=${month}`);
+    if (!res.ok) return [];
+    const rows = await res.json();
+    return (rows as Array<{
+      id: string;
+      date: string;
+      category: string;
+      description: string;
+      amount: number;
+      created_at: string;
+      memo?: string;
+      cost_type?: CostType;
+    }>).map((row) => ({
+      id: row.id,
+      date: row.date,
+      category: row.category,
+      costType: row.cost_type ?? "variable",
+      name: row.description,
+      amount: row.amount,
+      memo: row.memo ?? "",
+      receiptDataUrl: null,
+      createdAt: row.created_at,
+    }));
   } catch {
     return [];
   }
 }
 
-function save(entries: CostEntry[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-  window.dispatchEvent(new Event(EVENT_KEY));
-}
+// ── CRUD ────────────────────────────────────────────────────────
+export async function addCost(entry: Omit<CostEntry, "id" | "createdAt">): Promise<CostEntry> {
+  const body = {
+    date: entry.date,
+    category: entry.category,
+    description: entry.name,
+    amount: entry.amount,
+    memo: entry.memo,
+    cost_type: entry.costType ?? "variable",
+  };
 
-export function addCost(entry: Omit<CostEntry, "id" | "createdAt">) {
-  const entries = load();
-  const next: CostEntry = {
+  let newEntry: CostEntry = {
     ...entry,
     costType: entry.costType ?? "variable",
     id: `c_${Date.now()}`,
     createdAt: new Date().toISOString(),
   };
-  save([next, ...entries]);
-  return next;
+
+  try {
+    const res = await fetch("/api/costs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      const row = await res.json();
+      newEntry = {
+        id: row.id ?? newEntry.id,
+        date: row.date ?? entry.date,
+        category: row.category ?? entry.category,
+        costType: row.cost_type ?? entry.costType ?? "variable",
+        name: row.description ?? entry.name,
+        amount: row.amount ?? entry.amount,
+        memo: row.memo ?? entry.memo ?? "",
+        receiptDataUrl: null,
+        createdAt: row.created_at ?? newEntry.createdAt,
+      };
+    }
+  } catch {
+    // 오류 시 로컬 생성 ID 사용
+  }
+
+  if (_costCache !== null) {
+    _costCache = [newEntry, ..._costCache];
+  }
+  window.dispatchEvent(new Event(EVENT_KEY));
+  return newEntry;
 }
 
-export function removeCost(id: string) {
-  save(load().filter((e) => e.id !== id));
+export async function removeCost(id: string): Promise<void> {
+  try {
+    await fetch(`/api/costs/${id}`, { method: "DELETE" });
+  } catch {
+    // 오류 시에도 캐시에서 제거
+  }
+  if (_costCache !== null) {
+    _costCache = _costCache.filter((e) => e.id !== id);
+  }
+  window.dispatchEvent(new Event(EVENT_KEY));
 }
 
 export function getCosts(): CostEntry[] {
-  return load();
+  return _costCache ?? [];
 }
 
-export function getCostsByDate(date: string): CostEntry[] {
-  return load().filter((e) => e.date === date);
+export function getCostsByMonth(yearMonth: string): CostEntry[] {
+  return getCosts().filter((e) => e.date.startsWith(yearMonth));
+}
+
+export function getCostsByCategory(category: string): CostEntry[] {
+  return getCosts().filter((e) => e.category === category);
 }
 
 // ── Hook ─────────────────────────────────────────────────────────
-export function useCosts(date?: string) {
+export function useCosts() {
   const [entries, setEntries] = useState<CostEntry[]>([]);
 
   useEffect(() => {
-    const refresh = () =>
-      setEntries(date ? getCostsByDate(date) : getCosts());
-    refresh();
+    const month = currentYearMonth();
+    fetchCosts(month).then((data) => {
+      _costCache = data;
+      setEntries([...data]);
+    });
+
+    const refresh = () => setEntries([...(_costCache ?? [])]);
     window.addEventListener(EVENT_KEY, refresh);
     return () => window.removeEventListener(EVENT_KEY, refresh);
-  }, [date]);
+  }, []);
 
   return entries;
 }

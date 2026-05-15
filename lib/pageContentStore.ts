@@ -58,7 +58,6 @@ export interface PageContent {
   bookingCompleteSteps: string;  // 줄바꿈 구분 · {phone} 플레이스홀더 사용 가능
 }
 
-const STORE_KEY = "gureum_page_content";
 const EVENT_KEY = "gureum_page_content_update";
 
 export const DEFAULT_CONTENT: PageContent = {
@@ -138,38 +137,79 @@ export const DEFAULT_CONTENT: PageContent = {
   bookingCompleteSteps: "예약금 결제 링크가 {phone}으로 발송됩니다\n비행 당일 오전 7시에 날씨 확인 문자를 드립니다\n현장 도착 20분 전 체크인 부탁드립니다",
 };
 
-function load(): PageContent {
-  if (typeof window === "undefined") return DEFAULT_CONTENT;
+// ── in-memory cache ────────────────────────────────────────────────
+let _cache: PageContent | null = null;
+
+// ── API helpers ────────────────────────────────────────────────────
+
+async function loadFromApi(): Promise<PageContent> {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (!raw) return DEFAULT_CONTENT;
-    const parsed = JSON.parse(raw);
-    return {
+    const res = await fetch("/api/site-settings/page_content");
+    if (!res.ok) return DEFAULT_CONTENT;
+    const data = await res.json();
+    const value = data?.value;
+    if (!value) return DEFAULT_CONTENT;
+    const parsed: PageContent = {
       ...DEFAULT_CONTENT,
-      ...parsed,
-      products:     parsed.products     ?? DEFAULT_CONTENT.products,
-      safetyItems:  parsed.safetyItems  ?? DEFAULT_CONTENT.safetyItems,
+      ...value,
+      products:    value.products    ?? DEFAULT_CONTENT.products,
+      safetyItems: value.safetyItems ?? DEFAULT_CONTENT.safetyItems,
     };
+    _cache = parsed;
+    return parsed;
   } catch {
     return DEFAULT_CONTENT;
   }
 }
 
-function save(c: PageContent) {
-  localStorage.setItem(STORE_KEY, JSON.stringify(c));
-  window.dispatchEvent(new Event(EVENT_KEY));
+async function saveToApi(c: PageContent): Promise<void> {
+  _cache = c;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(EVENT_KEY));
+  try {
+    await fetch("/api/site-settings/page_content", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: c }),
+    });
+  } catch {
+    /* 실패해도 캐시는 유지 */
+  }
 }
 
-export function getPageContent(): PageContent { return load(); }
-export function setPageContent(patch: Partial<PageContent>) { save({ ...load(), ...patch }); }
+// ── API ───────────────────────────────────────────────────────────
+
+export function getPageContent(): PageContent {
+  return _cache ?? DEFAULT_CONTENT;
+}
+
+export function setPageContent(patch: Partial<PageContent>): void {
+  const current = _cache ?? DEFAULT_CONTENT;
+  saveToApi({ ...current, ...patch });
+}
+
+// ── hook ──────────────────────────────────────────────────────────
 
 export function usePageContent(): PageContent {
-  const [content, setContent] = useState<PageContent>(DEFAULT_CONTENT);
+  const [content, setContent] = useState<PageContent>(_cache ?? DEFAULT_CONTENT);
+
   useEffect(() => {
-    const refresh = () => setContent(load());
-    refresh();
+    let mounted = true;
+
+    if (!_cache) {
+      loadFromApi().then((d) => {
+        if (mounted) setContent(d);
+      });
+    }
+
+    const refresh = () => {
+      if (_cache) setContent({ ..._cache });
+    };
     window.addEventListener(EVENT_KEY, refresh);
-    return () => window.removeEventListener(EVENT_KEY, refresh);
+    return () => {
+      mounted = false;
+      window.removeEventListener(EVENT_KEY, refresh);
+    };
   }, []);
+
   return content;
 }

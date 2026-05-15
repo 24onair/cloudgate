@@ -22,15 +22,24 @@ export async function GET(req: NextRequest) {
     const tenantId  = await getTenantId();
     const all = new URL(req.url).searchParams.get("all") === "true";
 
-    let query = supabase
-      .from("products")
-      .select("id, slug, name, subtitle, price, duration_min, features, badge, is_featured, is_active, sort_order")
-      .eq("tenant_id", tenantId)
-      .order("sort_order", { ascending: true });
+    const buildQuery = (withImages: boolean) => {
+      const fields = withImages
+        ? "id, slug, name, subtitle, price, duration_min, features, badge, is_featured, is_active, sort_order, image_urls"
+        : "id, slug, name, subtitle, price, duration_min, features, badge, is_featured, is_active, sort_order";
+      let q = supabase
+        .from("products")
+        .select(fields)
+        .eq("tenant_id", tenantId)
+        .order("sort_order", { ascending: true });
+      if (!all) q = q.eq("is_active", true);
+      return q;
+    };
 
-    if (!all) query = query.eq("is_active", true);
-
-    const { data, error } = await query;
+    // image_urls 컬럼 포함 조회 시도, 컬럼 없으면(42703) 제외하고 재조회
+    let { data, error } = await buildQuery(true);
+    if (error?.code === "42703") {
+      ({ data, error } = await buildQuery(false));
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data ?? []);
   } catch (e: unknown) {
@@ -45,7 +54,7 @@ export async function POST(req: NextRequest) {
     const tenantId = await getTenantId();
     const body = await req.json();
 
-    const { name, subtitle, price, duration_min, features, badge, is_featured, sort_order, is_active, slug } = body;
+    const { name, subtitle, price, duration_min, features, badge, is_featured, sort_order, is_active, slug, image_urls } = body;
 
     if (!name || price === undefined) {
       return NextResponse.json({ error: "name과 price는 필수입니다." }, { status: 400 });
@@ -57,6 +66,7 @@ export async function POST(req: NextRequest) {
       slug: slug ?? toSlug(name),
       price,
       is_active: is_active ?? true,
+      image_urls: Array.isArray(image_urls) ? image_urls : [],
     };
     if (subtitle !== undefined) insertPayload.subtitle = subtitle;
     if (duration_min !== undefined) insertPayload.duration_min = duration_min;
@@ -103,7 +113,7 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-// DELETE /api/products → 상품 비활성화 (soft delete)
+// DELETE /api/products → 상품 완전 삭제 (hard delete)
 export async function DELETE(req: NextRequest) {
   try {
     const supabase = createServerClient() as any;
@@ -113,16 +123,14 @@ export async function DELETE(req: NextRequest) {
     const { id } = body;
     if (!id) return NextResponse.json({ error: "id는 필수입니다." }, { status: 400 });
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("products")
-      .update({ is_active: false })
+      .delete()
       .eq("slug", id)   // 스토어는 slug를 id로 사용
-      .eq("tenant_id", tenantId)
-      .select()
-      .single();
+      .eq("tenant_id", tenantId);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(data);
+    return NextResponse.json({ success: true });
   } catch (e: unknown) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

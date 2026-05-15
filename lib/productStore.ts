@@ -78,6 +78,8 @@ let _optionsCache: ProductOption[] | null = null;
 function mapDbProduct(row: Record<string, unknown>): Product {
   const durationMin = typeof row.duration_min === "number" ? row.duration_min : 0;
   const slug = String(row.slug ?? "");
+  const rawImages = row.image_urls;
+  const images = Array.isArray(rawImages) ? rawImages.map(String) : [];
   return {
     id: slug || String(row.id ?? ""),  // slug 우선 사용 (PATCH/DELETE 키)
     name: String(row.name ?? ""),
@@ -85,7 +87,7 @@ function mapDbProduct(row: Record<string, unknown>): Product {
     price: Number(row.price ?? 0),
     duration: durationMin > 0 ? `약 ${durationMin}분` : "",
     color: "#2A7AE2",
-    images: [],
+    images,  // DB의 image_urls 컬럼에서 로드
     popular: Boolean(row.is_featured ?? false),
     active: Boolean(row.is_active ?? true),
     sortOrder: Number(row.sort_order ?? 0),
@@ -162,6 +164,7 @@ export async function addProduct(product: Product): Promise<void> {
         is_featured: product.popular,
         is_active: product.active,
         sort_order: safeOrder(product.sortOrder),  // ← integer overflow 방지
+        image_urls: product.images ?? [],
       }),
     });
     if (!res.ok) {
@@ -205,6 +208,7 @@ export async function updateProduct(updated: Product): Promise<void> {
         is_featured: updated.popular,
         is_active: updated.active,
         sort_order: safeOrder(updated.sortOrder),
+        image_urls: updated.images ?? [],
       }),
     });
     if (!res.ok) {

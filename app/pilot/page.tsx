@@ -1199,12 +1199,16 @@ export default function PilotPortalPage() {
 
     // 공통 일별 테이블
     function DayTable({ days, total, amount }: { days: SettlementDay[]; total: number; amount: number }) {
+      function goToFlightDate(date: string) {
+        setFlightDate(date);
+        setTab("today");
+      }
       return (
         <div className="rounded-2xl overflow-hidden mb-4 border" style={{ borderColor: "#bfc1b7" }}>
           <div className="px-5 py-3 border-b flex items-center justify-between"
             style={{ borderColor: "#e5e7e0", backgroundColor: "#fdfdf8" }}>
             <p className="text-sm font-semibold" style={{ color: "#65675e" }}>일별 내역</p>
-            <p className="text-xs" style={{ color: "#9ea096" }}>비행일 {days.length}일</p>
+            <p className="text-xs" style={{ color: "#9ea096" }}>비행일 {days.length}일 · 날짜 탭하면 비행일정 이동</p>
           </div>
           <table className="w-full text-sm" style={{ backgroundColor: "#fdfdf8" }}>
             <thead>
@@ -1218,13 +1222,21 @@ export default function PilotPortalPage() {
               {days.map((d) => {
                 const isWknd = d.day === "토" || d.day === "일";
                 return (
-                  <tr key={d.date} className="border-b last:border-0" style={{ borderColor: "#e5e7e0" }}>
+                  <tr
+                    key={d.date}
+                    className="border-b last:border-0 active:opacity-60 transition-opacity"
+                    style={{ borderColor: "#e5e7e0", cursor: "pointer" }}
+                    onClick={() => goToFlightDate(d.date)}
+                  >
                     <td className="px-5 py-2.5">
-                      <span className="font-medium text-sm"
-                        style={{ color: isWknd ? "#F54E00" : "#4d4f46" }}>
-                        {d.date.slice(5).replace("-", "/")}
-                      </span>
-                      <span className="ml-1 text-xs" style={{ color: "#9ea096" }}>({d.day})</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-sm"
+                          style={{ color: isWknd ? "#F54E00" : "#4d4f46" }}>
+                          {d.date.slice(5).replace("-", "/")}
+                        </span>
+                        <span className="text-xs" style={{ color: "#9ea096" }}>({d.day})</span>
+                        <ChevronRight className="w-3 h-3 ml-auto" style={{ color: "#bfc1b7" }} />
+                      </div>
                     </td>
                     <td className="px-3 py-2.5 text-center">
                       <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold"

@@ -180,6 +180,60 @@ export function useSettlement() {
   return { cfg, overrides };
 }
 
+// ── 지급 예정일 설정 ───────────────────────────────────────────────
+export interface PaymentScheduleConfig {
+  type: "monthly" | "weekly";
+  monthlyDay: number;   // 1~31 (31 = 말일)
+  weeklyDow: number;    // 0=일, 1=월, 2=화, 3=수, 4=목, 5=금, 6=토
+}
+
+export const DEFAULT_PAYMENT_SCHEDULE: PaymentScheduleConfig = {
+  type: "monthly",
+  monthlyDay: 10,
+  weeklyDow: 5, // 금요일
+};
+
+let _paymentScheduleCache: PaymentScheduleConfig | null = null;
+
+async function savePaymentScheduleToApi(cfg: PaymentScheduleConfig): Promise<void> {
+  await fetch("/api/site-settings/payment_schedule", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value: cfg }),
+  });
+}
+
+export function getPaymentSchedule(): PaymentScheduleConfig {
+  return _paymentScheduleCache ?? DEFAULT_PAYMENT_SCHEDULE;
+}
+
+export async function updatePaymentSchedule(cfg: PaymentScheduleConfig): Promise<void> {
+  _paymentScheduleCache = cfg;
+  try { await savePaymentScheduleToApi(cfg); } catch { /* 오류 시 캐시 유지 */ }
+  window.dispatchEvent(new Event(EVENT_KEY));
+}
+
+export function usePaymentSchedule() {
+  const [cfg, setCfg] = useState<PaymentScheduleConfig>(DEFAULT_PAYMENT_SCHEDULE);
+
+  useEffect(() => {
+    fetch("/api/site-settings/payment_schedule")
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => {
+        const loaded: PaymentScheduleConfig = json?.value ?? DEFAULT_PAYMENT_SCHEDULE;
+        _paymentScheduleCache = loaded;
+        setCfg(loaded);
+      })
+      .catch(() => {});
+
+    const refresh = () => setCfg(_paymentScheduleCache ?? DEFAULT_PAYMENT_SCHEDULE);
+    window.addEventListener(EVENT_KEY, refresh);
+    return () => window.removeEventListener(EVENT_KEY, refresh);
+  }, []);
+
+  return cfg;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────
 export function clamp(n: number): number {
   if (Number.isNaN(n)) return 0;

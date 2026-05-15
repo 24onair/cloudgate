@@ -11,18 +11,21 @@ import {
   Clock,
   Percent,
   Plus,
-  X,
   Save,
   Trash2,
   Info,
   RefreshCw,
+  CalendarClock,
 } from "lucide-react";
 import {
   useSettlement,
   updateSettlementConfig,
   setPilotOverride,
   removePilotOverride,
+  usePaymentSchedule,
+  updatePaymentSchedule,
   type PilotShareOverride,
+  type PaymentScheduleConfig,
 } from "@/lib/settlementStore";
 
 // ─── 타입 ─────────────────────────────────────────────────────────
@@ -269,6 +272,141 @@ function SplitRatioCard({ pilots }: { pilots: PilotRow[] }) {
   );
 }
 
+// ─── 지급 예정일 설정 카드 ─────────────────────────────────────────
+const KR_DOW_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+const MONTHLY_QUICK = [5, 10, 15, 20, 25, 31]; // 31 = 말일
+
+function PaymentScheduleCard() {
+  const schedule = usePaymentSchedule();
+  const [draft, setDraft] = useState<PaymentScheduleConfig>(schedule);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => { if (!dirty) setDraft(schedule); }, [schedule, dirty]);
+
+  function patch(partial: Partial<PaymentScheduleConfig>) {
+    setDraft((prev) => ({ ...prev, ...partial }));
+    setDirty(true);
+  }
+
+  async function handleSave() {
+    await updatePaymentSchedule(draft);
+    setDirty(false);
+  }
+
+  const exampleMonth = "5월";
+  const exampleNextMonth = "6월";
+  const previewText = draft.type === "weekly"
+    ? `${exampleMonth} 각 주 비행 → 다음 주 ${KR_DOW_LABELS[draft.weeklyDow]}요일에 지급`
+    : draft.monthlyDay >= 31
+      ? `${exampleMonth} 비행 → ${exampleNextMonth} 말일에 지급`
+      : `${exampleMonth} 비행 → ${exampleNextMonth} ${draft.monthlyDay}일에 지급`;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <CalendarClock className="w-4 h-4" style={{ color: "#2A7AE2" }} />
+          <h3 className="font-semibold text-gray-900">지급 예정일 설정</h3>
+          <span className="text-xs text-gray-400">파일럿 포털 정산 화면에 표시</span>
+        </div>
+        {dirty && (
+          <button
+            onClick={handleSave}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+            style={{ backgroundColor: "#0D2B52" }}
+          >
+            <Save className="w-3.5 h-3.5" /> 저장
+          </button>
+        )}
+      </div>
+
+      {/* 월 지급 / 주 지급 토글 */}
+      <div className="flex gap-2 mb-5">
+        {(["monthly", "weekly"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => patch({ type: t })}
+            className="flex-1 py-2.5 rounded-xl text-sm font-bold border-2 transition-all"
+            style={draft.type === t
+              ? { backgroundColor: "#0D2B52", borderColor: "#0D2B52", color: "white" }
+              : { backgroundColor: "white", borderColor: "#E5E7EB", color: "#6B7280" }}
+          >
+            {t === "monthly" ? "📅 월 지급" : "📆 주 지급"}
+          </button>
+        ))}
+      </div>
+
+      {draft.type === "monthly" ? (
+        /* ── 월 지급: 다음달 N일 ───────────────────────── */
+        <div className="rounded-xl border border-gray-100 p-4" style={{ backgroundColor: "#F8FAFC" }}>
+          <p className="text-sm font-semibold text-gray-700 mb-3">다음달 몇 일에 지급할까요?</p>
+          <div className="grid grid-cols-6 gap-2 mb-3">
+            {MONTHLY_QUICK.map((d) => (
+              <button
+                key={d}
+                onClick={() => patch({ monthlyDay: d })}
+                className="py-2 rounded-lg text-xs font-bold border-2 transition-all"
+                style={draft.monthlyDay === d
+                  ? { backgroundColor: "#EEF4FD", borderColor: "#2A7AE2", color: "#2A7AE2" }
+                  : { backgroundColor: "white", borderColor: "#E5E7EB", color: "#6B7280" }}
+              >
+                {d === 31 ? "말일" : `${d}일`}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">직접 입력</span>
+            <input
+              type="number" min={1} max={28} value={draft.monthlyDay >= 31 ? "" : draft.monthlyDay}
+              placeholder="1~28"
+              onChange={(e) => {
+                const v = Math.max(1, Math.min(28, Number(e.target.value) || 1));
+                patch({ monthlyDay: v });
+              }}
+              className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center outline-none"
+            />
+            <span className="text-xs text-gray-400">일 (1~28, 월말 안전)</span>
+          </div>
+        </div>
+      ) : (
+        /* ── 주 지급: 매주 N요일 ────────────────────────── */
+        <div className="rounded-xl border border-gray-100 p-4" style={{ backgroundColor: "#F8FAFC" }}>
+          <p className="text-sm font-semibold text-gray-700 mb-3">매주 무슨 요일에 지급할까요?</p>
+          <div className="grid grid-cols-7 gap-1.5">
+            {KR_DOW_LABELS.map((label, dow) => {
+              const isWknd = dow === 0 || dow === 6;
+              const isSelected = draft.weeklyDow === dow;
+              return (
+                <button
+                  key={dow}
+                  onClick={() => patch({ weeklyDow: dow })}
+                  className="py-3 rounded-xl text-xs font-bold border-2 transition-all flex flex-col items-center gap-0.5"
+                  style={isSelected
+                    ? { backgroundColor: "#EEF4FD", borderColor: "#2A7AE2", color: "#2A7AE2" }
+                    : { backgroundColor: "white", borderColor: "#E5E7EB", color: isWknd ? "#DC2626" : "#6B7280" }}
+                >
+                  {label}
+                  <span className="text-[9px] font-normal opacity-60">요일</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700 flex items-start gap-1.5">
+            <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
+            <span>주 지급은 이번 달 마지막 날 이후 첫 번째 해당 요일에 지급됩니다.</span>
+          </div>
+        </div>
+      )}
+
+      {/* 미리보기 */}
+      <div className="mt-3 rounded-lg px-3 py-2 text-[11px] text-gray-500 flex items-start gap-1.5" style={{ backgroundColor: "#F0F9FF", border: "1px solid #BAE6FD" }}>
+        <CalendarClock className="w-3 h-3 mt-0.5 flex-shrink-0 text-blue-400" />
+        <span>{previewText}</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── 메인 ────────────────────────────────────────────────────────
 const PERIOD_TABS = [
   { label: "오늘",    value: "today" },
@@ -460,6 +598,9 @@ export default function SettlementPage() {
 
       {/* 분배 비율 관리 */}
       <SplitRatioCard pilots={computedPilots} />
+
+      {/* 지급 예정일 설정 */}
+      <PaymentScheduleCard />
 
       {/* 파일럿 정산 + 오늘 완료 내역 */}
       <div className="grid grid-cols-2 gap-4">

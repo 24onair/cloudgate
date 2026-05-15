@@ -37,11 +37,16 @@ export async function GET(req: NextRequest) {
     const supabase = createServerClient() as any;
     const tenantId = await getTenantId();
 
-    // ── 1. 분배비율 설정 로드 ──────────────────────────────────────
-    const [cfgRow, overrideRow] = await Promise.all([
+    // ── 1. 분배비율 + 지급일정 설정 로드 ─────────────────────────
+    const [cfgRow, overrideRow, psRow] = await Promise.all([
       supabase.from("site_settings").select("value").eq("key", "settlement_config").maybeSingle(),
       supabase.from("site_settings").select("value").eq("key", "settlement_overrides").maybeSingle(),
+      supabase.from("site_settings").select("value").eq("key", "payment_schedule").maybeSingle(),
     ]);
+
+    // 지급 예정일 설정 (기본: 월 지급 다음달 10일)
+    const psConfig: { type: string; monthlyDay: number; weeklyDow: number } =
+      psRow.data?.value ?? { type: "monthly", monthlyDay: 10, weeklyDow: 5 };
 
     const defaultShare: number = cfgRow.data?.value?.defaultPilotShare ?? 60;
     const overrides: { pilotId: string; pilotShare: number }[] = overrideRow.data?.value ?? [];
@@ -136,10 +141,23 @@ export async function GET(req: NextRequest) {
         : rawStatus === "confirmed" ? "confirmed"
         : "draft";
 
-      // 지급 예정일: 다음달 첫째 주 토요일
-      const sat = new Date(y, mo, 1);
-      while (sat.getDay() !== 6) sat.setDate(sat.getDate() + 1);
-      const payment_due = sat.toLocaleDateString("sv-SE");
+      // 지급 예정일: 설정에 따라 계산
+      // new Date(y, mo, 1) = 다음달 1일 (JS month 0-indexed, mo = 현재월 숫자값)
+      let payment_due: string;
+      if (psConfig.type === "weekly") {
+        // 다음달 1일부터 해당 요일까지 전진
+        const d = new Date(y, mo, 1);
+        while (d.getDay() !== psConfig.weeklyDow) d.setDate(d.getDate() + 1);
+        payment_due = d.toLocaleDateString("sv-SE");
+      } else {
+        // 월 지급: 다음달 N일 (31 = 말일)
+        if (psConfig.monthlyDay >= 31) {
+          // 말일: 다음달+1의 0번째 날 = 다음달 마지막 날
+          payment_due = new Date(y, mo + 1, 0).toLocaleDateString("sv-SE");
+        } else {
+          payment_due = new Date(y, mo, psConfig.monthlyDay).toLocaleDateString("sv-SE");
+        }
+      }
 
       return {
         month,

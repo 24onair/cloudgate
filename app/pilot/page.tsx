@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useLogo } from "@/lib/logoStore";
 import { useRouter } from "next/navigation";
 import {
   Wind,
@@ -212,6 +213,7 @@ type Tab = "today" | "history" | "settlement" | "schedule";
 
 export default function PilotPortalPage() {
   const router = useRouter();
+  const logo   = useLogo();
   const [tab, setTab] = useState<Tab>("today");
 
   // ── 파일럿 ID/정보
@@ -1802,8 +1804,20 @@ export default function PilotPortalPage() {
       <div className="px-5 pt-8 pb-5" style={{ backgroundColor: "#23251d" }}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Wind className="w-5 h-5" style={{ color: "#F54E00" }} />
-            <span className="text-white font-bold">구름상회</span>
+            {logo.imageDataUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={logo.imageDataUrl}
+                alt={logo.text || "로고"}
+                className="h-7 w-auto object-contain"
+                style={{ filter: "brightness(0) invert(1)" }}
+              />
+            ) : (
+              <Wind className="w-5 h-5" style={{ color: "#F54E00" }} />
+            )}
+            {(!logo.imageDataUrl || logo.showText) && (
+              <span className="text-white font-bold">{logo.text || "구름상회"}</span>
+            )}
           </div>
           <button
             onClick={() => {

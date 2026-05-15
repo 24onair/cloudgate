@@ -4,15 +4,15 @@ import { useEffect, useState } from "react";
 
 export interface InstagramPost {
   id: string;
-  imageUrl: string;   // 이미지 URL 또는 base64 data URL
-  caption: string;    // 짧은 설명
-  link: string;       // 인스타그램 게시물 링크
+  imageUrl: string;
+  caption: string;
+  link: string;
   sortOrder: number;
 }
 
 export interface YoutubeShort {
   id: string;
-  videoId: string;    // YouTube video ID (예: "dQw4w9WgXcQ")
+  videoId: string;
   title: string;
   sortOrder: number;
 }
@@ -20,42 +20,13 @@ export interface YoutubeShort {
 export interface SnsProfile {
   instagramHandle: string;
   instagramUrl: string;
-  instagramCount: number;        // 랜딩 노출 개수
+  instagramCount: number;
   youtubeChannelName: string;
   youtubeChannelUrl: string;
-  youtubeCount: number;          // 랜딩 노출 개수
-  youtubeAutoFetch: boolean;     // RSS 자동 가져오기 사용 여부
-  youtubeLastFetchedAt?: string; // ISO 시각
+  youtubeCount: number;
+  youtubeAutoFetch: boolean;
+  youtubeLastFetchedAt?: string;
 }
-
-// TODO: API — SNS 데이터 localStorage → API 교체
-// loadProfile()         → GET   /api/sns/profile
-// updateSnsProfile()    → PATCH /api/sns/profile
-// loadPosts()           → GET   /api/sns/posts
-// addInstagramPost()    → POST  /api/sns/posts
-// updateInstagramPost() → PATCH /api/sns/posts/:id
-// deleteInstagramPost() → DELETE /api/sns/posts/:id
-// loadShorts()          → GET   /api/sns/shorts
-// addYoutubeShort()     → POST  /api/sns/shorts
-// updateYoutubeShort()  → PATCH /api/sns/shorts/:id
-// deleteYoutubeShort()  → DELETE /api/sns/shorts/:id
-// saveFetchedShorts()   → POST  /api/sns/shorts/fetched (RSS 자동가져오기 결과 저장)
-
-const POSTS_KEY     = "gureum_instagram_posts";
-const SHORTS_KEY    = "gureum_youtube_shorts";
-const FETCHED_KEY   = "gureum_youtube_fetched";
-const PROFILE_KEY   = "gureum_sns_profile";
-const EVENT_KEY     = "gureum_sns_update";
-
-const DEFAULT_PROFILE: SnsProfile = {
-  instagramHandle:    "@gureum_paragliding",
-  instagramUrl:       "https://instagram.com/gureum_paragliding",
-  instagramCount:     8,
-  youtubeChannelName: "구름상회",
-  youtubeChannelUrl:  "https://youtube.com/@gureum_paragliding",
-  youtubeCount:       5,
-  youtubeAutoFetch:   true,
-};
 
 // YouTube URL에서 video ID 추출
 export function extractYoutubeId(url: string): string | null {
@@ -63,7 +34,7 @@ export function extractYoutubeId(url: string): string | null {
     /(?:youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
     /(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
     /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
-    /^([a-zA-Z0-9_-]{11})$/, // 그냥 ID만 입력한 경우
+    /^([a-zA-Z0-9_-]{11})$/,
   ];
   for (const re of patterns) {
     const m = url.match(re);
@@ -76,104 +47,182 @@ export function youtubeThumbnail(videoId: string): string {
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
-// ── Profile ────────────────────────────────────────────
-function loadProfile(): SnsProfile {
-  if (typeof window === "undefined") return DEFAULT_PROFILE;
-  try {
-    const raw = localStorage.getItem(PROFILE_KEY);
-    return raw ? { ...DEFAULT_PROFILE, ...JSON.parse(raw) } : DEFAULT_PROFILE;
-  } catch { return DEFAULT_PROFILE; }
-}
-export function updateSnsProfile(p: SnsProfile) {
-  localStorage.setItem(PROFILE_KEY, JSON.stringify(p));
-  window.dispatchEvent(new Event(EVENT_KEY));
+const DEFAULT_PROFILE: SnsProfile = {
+  instagramHandle:    "@gureum_paragliding",
+  instagramUrl:       "https://instagram.com/gureum_paragliding",
+  instagramCount:     8,
+  youtubeChannelName: "구름상회",
+  youtubeChannelUrl:  "https://youtube.com/@gureum_paragliding",
+  youtubeCount:       5,
+  youtubeAutoFetch:   true,
+};
+
+const EVENT_KEY = "gureum_sns_update";
+
+// ── DB row → store 타입 변환 ───────────────────────────────────
+function mapPost(row: Record<string, unknown>): InstagramPost {
+  return {
+    id:        row.id as string,
+    imageUrl:  (row.image_url as string) ?? "",
+    caption:   (row.caption as string) ?? "",
+    link:      (row.link as string) ?? "",
+    sortOrder: (row.sort_order as number) ?? 0,
+  };
 }
 
-// ── Instagram Posts ────────────────────────────────────
-function loadPosts(): InstagramPost[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(POSTS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-function savePosts(data: InstagramPost[]) {
-  localStorage.setItem(POSTS_KEY, JSON.stringify(data));
-  window.dispatchEvent(new Event(EVENT_KEY));
-}
-export function addInstagramPost(p: InstagramPost) {
-  savePosts([...loadPosts(), p]);
-}
-export function updateInstagramPost(p: InstagramPost) {
-  savePosts(loadPosts().map((x) => (x.id === p.id ? p : x)));
-}
-export function deleteInstagramPost(id: string) {
-  savePosts(loadPosts().filter((x) => x.id !== id));
+function mapShort(row: Record<string, unknown>): YoutubeShort {
+  return {
+    id:        row.id as string,
+    videoId:   row.video_id as string,
+    title:     (row.title as string) ?? "",
+    sortOrder: (row.sort_order as number) ?? 0,
+  };
 }
 
-// ── YouTube Shorts ─────────────────────────────────────
-function loadShorts(): YoutubeShort[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(SHORTS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-function saveShorts(data: YoutubeShort[]) {
-  localStorage.setItem(SHORTS_KEY, JSON.stringify(data));
-  window.dispatchEvent(new Event(EVENT_KEY));
-}
-export function addYoutubeShort(s: YoutubeShort) {
-  saveShorts([...loadShorts(), s]);
-}
-export function updateYoutubeShort(s: YoutubeShort) {
-  saveShorts(loadShorts().map((x) => (x.id === s.id ? s : x)));
-}
-export function deleteYoutubeShort(id: string) {
-  saveShorts(loadShorts().filter((x) => x.id !== id));
+// ── 모듈 캐시 ────────────────────────────────────────────────────
+let _profile: SnsProfile = DEFAULT_PROFILE;
+let _posts: InstagramPost[] = [];
+let _shorts: YoutubeShort[] = [];
+let _loaded = false;
+
+async function fetchAll() {
+  const [profileRes, postsRes, shortsRes] = await Promise.all([
+    fetch("/api/sns/profile"),
+    fetch("/api/sns/posts"),
+    fetch("/api/sns/shorts"),
+  ]);
+
+  if (profileRes.ok) {
+    const { value } = await profileRes.json() as { value: SnsProfile | null };
+    _profile = value ? { ...DEFAULT_PROFILE, ...value } : DEFAULT_PROFILE;
+  }
+  if (postsRes.ok) {
+    const rows = await postsRes.json() as Record<string, unknown>[];
+    _posts = (rows ?? []).map(mapPost).sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+  if (shortsRes.ok) {
+    const rows = await shortsRes.json() as Record<string, unknown>[];
+    _shorts = (rows ?? []).map(mapShort).sort((a, b) => a.sortOrder - b.sortOrder);
+  }
 }
 
-// ── Fetched Shorts (RSS 자동 가져오기) ──────────────────
+function notify() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(EVENT_KEY));
+}
+
+// ── Profile ────────────────────────────────────────────────────
+export async function updateSnsProfile(p: SnsProfile) {
+  _profile = p;
+  notify();
+  await fetch("/api/sns/profile", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value: p }),
+  });
+}
+
+// ── Instagram Posts ────────────────────────────────────────────
+export async function addInstagramPost(p: Omit<InstagramPost, "id">) {
+  const res = await fetch("/api/sns/posts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageUrl: p.imageUrl, caption: p.caption, link: p.link, sortOrder: p.sortOrder }),
+  });
+  if (res.ok) {
+    const row = await res.json() as Record<string, unknown>;
+    _posts = [..._posts, mapPost(row)].sort((a, b) => a.sortOrder - b.sortOrder);
+    notify();
+  }
+}
+
+export async function updateInstagramPost(p: InstagramPost) {
+  _posts = _posts.map((x) => (x.id === p.id ? p : x));
+  notify();
+  await fetch(`/api/sns/posts/${p.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageUrl: p.imageUrl, caption: p.caption, link: p.link, sortOrder: p.sortOrder }),
+  });
+}
+
+export async function deleteInstagramPost(id: string) {
+  _posts = _posts.filter((x) => x.id !== id);
+  notify();
+  await fetch(`/api/sns/posts/${id}`, { method: "DELETE" });
+}
+
+// ── YouTube Shorts ─────────────────────────────────────────────
+export async function addYoutubeShort(s: Omit<YoutubeShort, "id">) {
+  const res = await fetch("/api/sns/shorts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ videoId: s.videoId, title: s.title, sortOrder: s.sortOrder }),
+  });
+  if (res.ok) {
+    const row = await res.json() as Record<string, unknown>;
+    _shorts = [..._shorts, mapShort(row)].sort((a, b) => a.sortOrder - b.sortOrder);
+    notify();
+  }
+}
+
+export async function updateYoutubeShort(s: YoutubeShort) {
+  _shorts = _shorts.map((x) => (x.id === s.id ? s : x));
+  notify();
+  await fetch(`/api/sns/shorts/${s.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ videoId: s.videoId, title: s.title, sortOrder: s.sortOrder }),
+  });
+}
+
+export async function deleteYoutubeShort(id: string) {
+  _shorts = _shorts.filter((x) => x.id !== id);
+  notify();
+  await fetch(`/api/sns/shorts/${id}`, { method: "DELETE" });
+}
+
+// ── FetchedShorts: 세션 메모리만 사용 (임시 RSS 결과) ──────────
 export interface FetchedShort {
   videoId: string;
   title: string;
   publishedAt: string;
 }
 
-function loadFetchedShorts(): FetchedShort[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(FETCHED_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
+let _fetchedShorts: FetchedShort[] = [];
 
 export function saveFetchedShorts(items: FetchedShort[]) {
-  localStorage.setItem(FETCHED_KEY, JSON.stringify(items));
-  window.dispatchEvent(new Event(EVENT_KEY));
+  _fetchedShorts = items;
+  notify();
 }
 
 export function clearFetchedShorts() {
-  localStorage.removeItem(FETCHED_KEY);
-  window.dispatchEvent(new Event(EVENT_KEY));
+  _fetchedShorts = [];
+  notify();
 }
 
-// ── Hooks ──────────────────────────────────────────────
+// ── Hook ────────────────────────────────────────────────────────
 export function useSns() {
-  const [profile, setProfile] = useState<SnsProfile>(DEFAULT_PROFILE);
-  const [posts, setPosts] = useState<InstagramPost[]>([]);
-  const [shorts, setShorts] = useState<YoutubeShort[]>([]);
-  const [fetchedShorts, setFetchedShorts] = useState<FetchedShort[]>([]);
+  const [profile, setProfile] = useState<SnsProfile>(_profile);
+  const [posts, setPosts] = useState<InstagramPost[]>(_posts);
+  const [shorts, setShorts] = useState<YoutubeShort[]>(_shorts);
+  const [fetchedShorts, setFetchedShorts] = useState<FetchedShort[]>(_fetchedShorts);
 
   useEffect(() => {
     const refresh = () => {
-      setProfile(loadProfile());
-      setPosts(loadPosts().sort((a, b) => a.sortOrder - b.sortOrder));
-      setShorts(loadShorts().sort((a, b) => a.sortOrder - b.sortOrder));
-      setFetchedShorts(loadFetchedShorts());
+      setProfile({ ..._profile });
+      setPosts([..._posts]);
+      setShorts([..._shorts]);
+      setFetchedShorts([..._fetchedShorts]);
     };
-    refresh();
     window.addEventListener(EVENT_KEY, refresh);
+
+    if (!_loaded) {
+      _loaded = true;
+      fetchAll().then(() => notify());
+    } else {
+      refresh();
+    }
+
     return () => window.removeEventListener(EVENT_KEY, refresh);
   }, []);
 

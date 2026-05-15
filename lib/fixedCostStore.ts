@@ -9,8 +9,8 @@ export interface FixedCostItem {
   id: string;
   name: string;
   category: CostCategory;
-  amount: number;              // 입력 금액 (월 또는 연간 — billingCycle에 따라 다름)
-  billingCycle: BillingCycle;  // "monthly" | "annual"
+  amount: number;
+  billingCycle: BillingCycle;
   memo: string;
   active: boolean;
   createdAt: string;
@@ -23,101 +23,114 @@ export function monthlyAmount(item: FixedCostItem): number {
     : item.amount;
 }
 
-// TODO: API — 고정비 localStorage → API 교체
-// load()            → GET    /api/fixed-costs
-// addFixedCost()    → POST   /api/fixed-costs
-// updateFixedCost() → PATCH  /api/fixed-costs/:id
-// removeFixedCost() → DELETE /api/fixed-costs/:id
+const EVENT_KEY = "gureum_fixed_costs_update";
 
-const STORAGE_KEY = "gureum_fixed_costs";
-const EVENT_KEY   = "gureum_fixed_costs_update";
-
-// ── 기본 샘플 ────────────────────────────────────────────────────
-const DEFAULT_ITEMS: FixedCostItem[] = [
-  {
-    id: "fc_ins",
-    name: "탠덤 항공보험",
-    category: "insurance",
-    amount: 350000,
-    billingCycle: "monthly",
-    memo: "월 정기 납부",
-    active: true,
-    createdAt: "2026-01-01T00:00:00.000Z",
-  },
-  {
-    id: "fc_site",
-    name: "사이트 임차료",
-    category: "other",
-    amount: 200000,
-    billingCycle: "monthly",
-    memo: "이륙장 월 임대",
-    active: true,
-    createdAt: "2026-01-01T00:00:00.000Z",
-  },
-];
-
-// ── 내부 로드/저장 ───────────────────────────────────────────────
-function load(): FixedCostItem[] {
-  if (typeof window === "undefined") return DEFAULT_ITEMS;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_ITEMS;
-    // 구버전 데이터 호환: billingCycle 없으면 monthly로 처리
-    const parsed: FixedCostItem[] = JSON.parse(raw);
-    return parsed.map((i) => ({ ...i, billingCycle: i.billingCycle ?? "monthly" }));
-  } catch {
-    return DEFAULT_ITEMS;
-  }
-}
-
-function save(items: FixedCostItem[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  window.dispatchEvent(new Event(EVENT_KEY));
-}
-
-// ── CRUD ────────────────────────────────────────────────────────
-export function getFixedCosts(): FixedCostItem[] {
-  return load();
-}
-
-export function addFixedCost(item: Omit<FixedCostItem, "id" | "createdAt">) {
-  const items = load();
-  const next: FixedCostItem = {
-    ...item,
-    id: `fc_${Date.now()}`,
-    createdAt: new Date().toISOString(),
+// ── DB row → store 타입 변환 ───────────────────────────────────
+function mapRow(row: Record<string, unknown>): FixedCostItem {
+  return {
+    id:           row.id as string,
+    name:         row.name as string,
+    category:     row.category as CostCategory,
+    amount:       row.amount as number,
+    billingCycle: ((row.billing_cycle as string) ?? "monthly") as BillingCycle,
+    memo:         (row.memo as string) ?? "",
+    active:       (row.active as boolean) ?? true,
+    createdAt:    row.created_at as string,
   };
-  save([next, ...items]);
-  return next;
 }
 
-export function updateFixedCost(updated: FixedCostItem) {
-  save(load().map((i) => (i.id === updated.id ? updated : i)));
+// ── 모듈 캐시 ────────────────────────────────────────────────────
+let _cache: FixedCostItem[] = [];
+let _loaded = false;
+
+async function fetchFromApi(): Promise<FixedCostItem[]> {
+  const res = await fetch("/api/fixed-costs");
+  if (!res.ok) return [];
+  const rows = await res.json() as Record<string, unknown>[];
+  return (rows ?? []).map(mapRow);
 }
 
-export function removeFixedCost(id: string) {
-  save(load().filter((i) => i.id !== id));
+function notify() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(EVENT_KEY));
+}
+
+// ── 공개 CRUD ────────────────────────────────────────────────────
+export function getFixedCosts(): FixedCostItem[] { return _cache; }
+
+export async function addFixedCost(item: Omit<FixedCostItem, "id" | "createdAt">) {
+  const res = await fetch("/api/fixed-costs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name:         item.name,
+      category:     item.category,
+      amount:       item.amount,
+      billingCycle: item.billingCycle,
+      memo:         item.memo,
+      active:       item.active,
+    }),
+  });
+  if (res.ok) {
+    const row = await res.json() as Record<string, unknown>;
+    const created = mapRow(row);
+    _cache = [created, ..._cache];
+    notify();
+    return created;
+  }
+  return null;
+}
+
+export async function updateFixedCost(updated: FixedCostItem) {
+  _cache = _cache.map((i) => (i.id === updated.id ? updated : i));
+  notify();
+  await fetch(`/api/fixed-costs/${updated.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name:         updated.name,
+      category:     updated.category,
+      amount:       updated.amount,
+      billingCycle: updated.billingCycle,
+      memo:         updated.memo,
+      active:       updated.active,
+    }),
+  });
+}
+
+export async function removeFixedCost(id: string) {
+  _cache = _cache.filter((i) => i.id !== id);
+  notify();
+  await fetch(`/api/fixed-costs/${id}`, { method: "DELETE" });
 }
 
 /** 활성 고정비 월 합계 (연간 항목은 /12 적용) */
 export function getMonthlyFixedTotal(): number {
-  return load()
+  return _cache
     .filter((i) => i.active)
     .reduce((s, i) => s + monthlyAmount(i), 0);
 }
 
 // ── Hook ────────────────────────────────────────────────────────
 export function useFixedCosts() {
-  const [items, setItems] = useState<FixedCostItem[]>(DEFAULT_ITEMS);
+  const [items, setItems] = useState<FixedCostItem[]>(_cache);
 
   useEffect(() => {
-    const refresh = () => setItems(load());
-    refresh();
+    const refresh = () => setItems([..._cache]);
     window.addEventListener(EVENT_KEY, refresh);
+
+    if (!_loaded) {
+      _loaded = true;
+      fetchFromApi().then((data) => {
+        _cache = data;
+        notify();
+      });
+    } else {
+      refresh();
+    }
+
     return () => window.removeEventListener(EVENT_KEY, refresh);
   }, []);
 
-  // activeTotal = 월 환산 합계
   const activeTotal = items
     .filter((i) => i.active)
     .reduce((s, i) => s + monthlyAmount(i), 0);

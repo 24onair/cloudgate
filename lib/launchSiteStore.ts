@@ -14,7 +14,6 @@ export const WIND_DIR_16: WindDir16[] = [
   "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
 ];
 
-// Best: 이상적, Conditional: 비행 가능, Caution: 주의 필요, Reject: 비행 불가
 export type WindDirGrade = "best" | "conditional" | "caution" | "reject";
 
 export const WIND_DIR_GRADE_CFG: Record<
@@ -37,11 +36,11 @@ export interface LaunchSite {
   id: string;
   name: string;
   location: string;
-  nx: number;          // 기상청 격자 X
-  ny: number;          // 기상청 격자 Y
-  lat?: number;        // 위도 (일출/일몰 계산용)
-  lng?: number;        // 경도 (일출/일몰 계산용)
-  altitude: number;    // 고도 (m)
+  nx: number;
+  ny: number;
+  lat?: number;
+  lng?: number;
+  altitude: number;
   windDirections: Record<WindDir16, WindDirGrade>;
   active: boolean;
   createdAt: string;
@@ -53,93 +52,147 @@ export function defaultWindDirs(): Record<WindDir16, WindDirGrade> {
   ) as Record<WindDir16, WindDirGrade>;
 }
 
-// ── 기본 이륙장 데이터 ──────────────────────────────────────────
-// TODO: API — 이륙장 localStorage → GET/POST/PATCH/DELETE /api/launch-sites
-const DEFAULT_SITES: LaunchSite[] = [
-  {
-    id: "site_mungyeong",
-    name: "문경 이륙장",
-    location: "경북 문경시 가은읍",
-    nx: 96,
-    ny: 98,
-    lat: 36.59,
-    lng: 128.07,
-    altitude: 850,
-    windDirections: {
-      N: "reject",      NNE: "caution",     NE: "best",      ENE: "best",
-      E: "best",        ESE: "conditional", SE: "caution",   SSE: "reject",
-      S: "reject",      SSW: "caution",     SW: "conditional", WSW: "best",
-      W: "best",        WNW: "best",        NW: "conditional", NNW: "caution",
-    },
-    active: true,
-    createdAt: "2026-01-01T00:00:00.000Z",
+// ── 기본 이륙장 (DB가 비어 있을 때 seed) ────────────────────────
+const DEFAULT_SITE: LaunchSite = {
+  id: "site_mungyeong",
+  name: "문경 이륙장",
+  location: "경북 문경시 가은읍",
+  nx: 96, ny: 98, lat: 36.59, lng: 128.07, altitude: 850,
+  windDirections: {
+    N: "reject", NNE: "caution", NE: "best",         ENE: "best",
+    E: "best",   ESE: "conditional", SE: "caution",  SSE: "reject",
+    S: "reject", SSW: "caution", SW: "conditional",  WSW: "best",
+    W: "best",   WNW: "best",   NW: "conditional",   NNW: "caution",
   },
-];
+  active: true,
+  createdAt: "2026-01-01T00:00:00.000Z",
+};
 
-// ── localStorage ────────────────────────────────────────────────
-const STORAGE_KEY = "gureum_launch_sites";
-const EVENT_KEY   = "gureum_launch_sites_update";
+const EVENT_KEY = "gureum_launch_sites_update";
 
-function load(): LaunchSite[] {
-  if (typeof window === "undefined") return DEFAULT_SITES;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_SITES;
-    const saved: LaunchSite[] = JSON.parse(raw);
-    return saved.map((s) => ({
-      ...s,
-      windDirections: { ...defaultWindDirs(), ...s.windDirections },
-    }));
-  } catch {
-    return DEFAULT_SITES;
+// ── DB row → store 타입 변환 ───────────────────────────────────
+function mapRow(row: Record<string, unknown>): LaunchSite {
+  return {
+    id:             row.id as string,
+    name:           row.name as string,
+    location:       (row.location as string) ?? "",
+    nx:             (row.nx as number) ?? 0,
+    ny:             (row.ny as number) ?? 0,
+    lat:            row.lat as number | undefined,
+    lng:            row.lng as number | undefined,
+    altitude:       (row.altitude as number) ?? 0,
+    windDirections: { ...defaultWindDirs(), ...(row.wind_directions as Record<WindDir16, WindDirGrade>) },
+    active:         (row.active as boolean) ?? true,
+    createdAt:      row.created_at as string,
+  };
+}
+
+// ── 모듈 캐시 ────────────────────────────────────────────────────
+let _cache: LaunchSite[] = [DEFAULT_SITE];
+let _loaded = false;
+
+async function fetchFromApi(): Promise<LaunchSite[]> {
+  const res = await fetch("/api/launch-sites");
+  if (!res.ok) return [DEFAULT_SITE];
+  const rows = await res.json() as Record<string, unknown>[];
+  if (!rows || rows.length === 0) {
+    await seedDefault();
+    return [DEFAULT_SITE];
   }
+  return rows.map(mapRow);
 }
 
-function save(sites: LaunchSite[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sites));
-  window.dispatchEvent(new Event(EVENT_KEY));
+async function seedDefault() {
+  await fetch("/api/launch-sites", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...DEFAULT_SITE, windDirections: DEFAULT_SITE.windDirections, sortOrder: 0 }),
+  });
 }
 
-export function getLaunchSites(): LaunchSite[] { return load(); }
+function notify() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(EVENT_KEY));
+}
 
-export function addLaunchSite(site: Omit<LaunchSite, "id" | "createdAt">) {
+// ── 공개 CRUD ────────────────────────────────────────────────────
+export function getLaunchSites(): LaunchSite[] { return _cache; }
+
+export async function addLaunchSite(site: Omit<LaunchSite, "id" | "createdAt">) {
+  const id = `site_${Date.now()}`;
   const next: LaunchSite = {
     ...site,
     windDirections: { ...defaultWindDirs(), ...site.windDirections },
-    id: `site_${Date.now()}`,
+    id,
     createdAt: new Date().toISOString(),
   };
-  save([...load(), next]);
+  _cache = [..._cache, next];
+  notify();
+
+  const res = await fetch("/api/launch-sites", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...next, windDirections: next.windDirections, sortOrder: _cache.length }),
+  });
+  if (res.ok) {
+    const row = await res.json() as Record<string, unknown>;
+    const created = mapRow(row);
+    _cache = _cache.map((s) => (s.id === id ? created : s));
+    notify();
+    return created;
+  }
   return next;
 }
 
-export function updateLaunchSite(updated: LaunchSite) {
-  save(load().map((s) => (s.id === updated.id ? updated : s)));
+export async function updateLaunchSite(updated: LaunchSite) {
+  _cache = _cache.map((s) => (s.id === updated.id ? updated : s));
+  notify();
+  await fetch(`/api/launch-sites/${updated.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: updated.name, location: updated.location,
+      nx: updated.nx, ny: updated.ny, lat: updated.lat, lng: updated.lng,
+      altitude: updated.altitude, windDirections: updated.windDirections, active: updated.active,
+    }),
+  });
 }
 
-export function deleteLaunchSite(id: string) {
-  save(load().filter((s) => s.id !== id));
+export async function deleteLaunchSite(id: string) {
+  _cache = _cache.filter((s) => s.id !== id);
+  notify();
+  await fetch(`/api/launch-sites/${id}`, { method: "DELETE" });
 }
 
+// ── Hook ────────────────────────────────────────────────────────
 export function useLaunchSites() {
-  const [sites, setSites] = useState<LaunchSite[]>(DEFAULT_SITES);
+  const [sites, setSites] = useState<LaunchSite[]>(_cache);
+
   useEffect(() => {
-    const refresh = () => setSites(load());
-    refresh();
+    const refresh = () => setSites([..._cache]);
     window.addEventListener(EVENT_KEY, refresh);
+
+    if (!_loaded) {
+      _loaded = true;
+      fetchFromApi().then((data) => {
+        _cache = data;
+        notify();
+      });
+    } else {
+      refresh();
+    }
+
     return () => window.removeEventListener(EVENT_KEY, refresh);
   }, []);
+
   return sites;
 }
 
-// ── 풍향 변환 ────────────────────────────────────────────────────
-/** VEC(도) → WindDir16 */
+// ── 풍향 변환 (순수 유틸) ────────────────────────────────────────
 export function degToDir16(deg: number): WindDir16 {
   const idx = Math.round(((deg % 360) + 360) % 360 / 22.5) % 16;
   return WIND_DIR_16[idx];
 }
 
-/** VEC(도) → 한국어 방향명 */
 export function degToKorean(deg: number): string {
   const labels = [
     "북","북북동","북동","동북동","동","동남동","남동","남남동",
@@ -148,7 +201,6 @@ export function degToKorean(deg: number): string {
   return labels[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
 }
 
-// ── 비행 등급 계산 (풍속 + 풍향 통합) ───────────────────────────
 export type FlightGrade = "GREEN" | "YELLOW" | "RED";
 
 export function calcFlightGrade(
@@ -156,18 +208,15 @@ export function calcFlightGrade(
   windDir16: WindDir16,
   site: LaunchSite | null
 ): { grade: FlightGrade; speedGrade: FlightGrade; dirGrade: FlightGrade; dirWindGrade: WindDirGrade } {
-  // 풍속 등급
   const speedGrade: FlightGrade =
     windSpeed <= 5 ? "GREEN" : windSpeed <= 8 ? "YELLOW" : "RED";
 
-  // 풍향 등급 (이륙장 없으면 GREEN으로 처리)
   const windDirGrade: WindDirGrade = site?.windDirections[windDir16] ?? "best";
   const dirGrade: FlightGrade =
     windDirGrade === "reject" ? "RED"
     : windDirGrade === "caution" ? "YELLOW"
-    : "GREEN"; // best, conditional 모두 GREEN
+    : "GREEN";
 
-  // 최악 등급 적용
   const order: Record<FlightGrade, number> = { GREEN: 0, YELLOW: 1, RED: 2 };
   const combined: FlightGrade =
     order[speedGrade] >= order[dirGrade] ? speedGrade : dirGrade;
@@ -175,7 +224,6 @@ export function calcFlightGrade(
   return { grade: combined, speedGrade, dirGrade, dirWindGrade: windDirGrade };
 }
 
-// ── 위경도 → 기상청 격자 변환 ────────────────────────────────────
 export function latlngToGrid(lat: number, lng: number): { nx: number; ny: number } {
   const RE = 6371.00877, GRID = 5.0;
   const SLAT1 = 30.0, SLAT2 = 60.0, OLON = 126.0, OLAT = 38.0;
@@ -188,8 +236,8 @@ export function latlngToGrid(lat: number, lng: number): { nx: number; ny: number
 
   let sn = Math.tan(Math.PI * 0.25 + slat2 * 0.5) / Math.tan(Math.PI * 0.25 + slat1 * 0.5);
   sn = Math.log(Math.cos(slat1) / Math.cos(slat2)) / Math.log(sn);
-  let sf = Math.pow(Math.tan(Math.PI * 0.25 + slat1 * 0.5), sn) * Math.cos(slat1) / sn;
-  let ro = re * sf / Math.pow(Math.tan(Math.PI * 0.25 + olat * 0.5), sn);
+  const sf = Math.pow(Math.tan(Math.PI * 0.25 + slat1 * 0.5), sn) * Math.cos(slat1) / sn;
+  const ro = re * sf / Math.pow(Math.tan(Math.PI * 0.25 + olat * 0.5), sn);
 
   const ra = re * sf / Math.pow(Math.tan(Math.PI * 0.25 + lat * DEGRAD * 0.5), sn);
   let theta = lng * DEGRAD - olon;

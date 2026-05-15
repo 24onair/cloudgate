@@ -25,83 +25,122 @@ const DEFAULT_CATEGORIES: CostCategoryItem[] = [
   { id: "other",       label: "기타",        color: "#6B7280", active: true, isDefault: true },
 ];
 
-// TODO: API — 비용 카테고리 localStorage → API 교체
-// load()            → GET    /api/cost-categories
-// addCategory()     → POST   /api/cost-categories
-// updateCategory()  → PATCH  /api/cost-categories/:id
-// deleteCategory()  → DELETE /api/cost-categories/:id
+const EVENT_KEY = "gureum_categories_update";
 
-const STORAGE_KEY = "gureum_cost_categories";
-const EVENT_KEY   = "gureum_categories_update";
+// ── DB row → store 타입 변환 ───────────────────────────────────
+function mapRow(row: Record<string, unknown>): CostCategoryItem {
+  return {
+    id:        row.id as string,
+    label:     row.label as string,
+    color:     (row.color as string) ?? "#6B7280",
+    active:    (row.active as boolean) ?? true,
+    isDefault: (row.is_default as boolean) ?? false,
+  };
+}
 
-// ── 로드/저장 ─────────────────────────────────────────────────────
-function load(): CostCategoryItem[] {
-  if (typeof window === "undefined") return DEFAULT_CATEGORIES;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_CATEGORIES;
-    const saved: CostCategoryItem[] = JSON.parse(raw);
-    // 기본 카테고리가 저장 데이터에 없으면 앞에 추가 (새 기본 카테고리 추가 대응)
-    const savedIds = new Set(saved.map((c) => c.id));
-    const missing = DEFAULT_CATEGORIES.filter((d) => !savedIds.has(d.id));
-    return [...missing, ...saved];
-  } catch {
+// ── 모듈 캐시 ────────────────────────────────────────────────────
+let _cache: CostCategoryItem[] = DEFAULT_CATEGORIES;
+let _loaded = false;
+
+async function fetchFromApi(): Promise<CostCategoryItem[]> {
+  const res = await fetch("/api/cost-categories");
+  if (!res.ok) return DEFAULT_CATEGORIES;
+  const rows = await res.json() as Record<string, unknown>[];
+  if (!rows || rows.length === 0) {
+    // DB 비어 있으면 기본 카테고리 seed
+    await seedDefaults();
     return DEFAULT_CATEGORIES;
+  }
+  return rows.map(mapRow);
+}
+
+async function seedDefaults() {
+  for (let i = 0; i < DEFAULT_CATEGORIES.length; i++) {
+    const c = DEFAULT_CATEGORIES[i];
+    await fetch("/api/cost-categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...c, sortOrder: i }),
+    });
   }
 }
 
-function save(items: CostCategoryItem[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  window.dispatchEvent(new Event(EVENT_KEY));
+function notify() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(EVENT_KEY));
 }
 
-// ── CRUD ─────────────────────────────────────────────────────────
-export function getCategories(): CostCategoryItem[] {
-  return load();
-}
+// ── 공개 CRUD ────────────────────────────────────────────────────
+export function getCategories(): CostCategoryItem[] { return _cache; }
 
 export function getCategoryById(id: string): CostCategoryItem | undefined {
-  return load().find((c) => c.id === id);
+  return _cache.find((c) => c.id === id);
 }
 
-export function addCategory(item: Pick<CostCategoryItem, "label" | "color"> & { isDefault?: boolean }) {
-  const items = load();
-  const next: CostCategoryItem = {
-    id: `cat_${Date.now()}`,
-    label: item.label.trim(),
-    color: item.color,
-    active: true,
-    isDefault: item.isDefault ?? false,
-  };
-  save([...items, next]);
-  return next;
-}
-
-export function updateCategory(updated: CostCategoryItem) {
-  save(load().map((c) => (c.id === updated.id ? updated : c)));
-}
-
-export function deleteCategory(id: string) {
-  const items = load();
-  const target = items.find((c) => c.id === id);
-  if (target?.isDefault) return; // 기본 카테고리 삭제 불가
-  save(items.filter((c) => c.id !== id));
-}
-
-// CATEGORY_META 호환 — 기존 코드에서 CATEGORY_META[key]처럼 쓰던 패턴 대체
 export function getCategoryMeta(id: string): { label: string; color: string } {
   const c = getCategoryById(id);
   return c ?? { label: id, color: "#6B7280" };
 }
 
+export async function addCategory(item: Pick<CostCategoryItem, "label" | "color"> & { isDefault?: boolean }) {
+  const tempId = `cat_${Date.now()}`;
+  const next: CostCategoryItem = {
+    id: tempId, label: item.label.trim(), color: item.color,
+    active: true, isDefault: item.isDefault ?? false,
+  };
+  _cache = [..._cache, next];
+  notify();
+
+  const res = await fetch("/api/cost-categories", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: tempId, label: next.label, color: next.color, isDefault: next.isDefault, sortOrder: _cache.length }),
+  });
+  if (res.ok) {
+    const row = await res.json() as Record<string, unknown>;
+    const created = mapRow(row);
+    _cache = _cache.map((c) => (c.id === tempId ? created : c));
+    notify();
+    return created;
+  }
+  return next;
+}
+
+export async function updateCategory(updated: CostCategoryItem) {
+  _cache = _cache.map((c) => (c.id === updated.id ? updated : c));
+  notify();
+  await fetch(`/api/cost-categories/${updated.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label: updated.label, color: updated.color, active: updated.active }),
+  });
+}
+
+export async function deleteCategory(id: string) {
+  const target = _cache.find((c) => c.id === id);
+  if (target?.isDefault) return;
+  _cache = _cache.filter((c) => c.id !== id);
+  notify();
+  await fetch(`/api/cost-categories/${id}`, { method: "DELETE" });
+}
+
 // ── Hook ─────────────────────────────────────────────────────────
 export function useCategories() {
-  const [categories, setCategories] = useState<CostCategoryItem[]>(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState<CostCategoryItem[]>(_cache);
 
   useEffect(() => {
-    const refresh = () => setCategories(load());
-    refresh();
+    const refresh = () => setCategories([..._cache]);
     window.addEventListener(EVENT_KEY, refresh);
+
+    if (!_loaded) {
+      _loaded = true;
+      fetchFromApi().then((data) => {
+        _cache = data;
+        notify();
+      });
+    } else {
+      refresh();
+    }
+
     return () => window.removeEventListener(EVENT_KEY, refresh);
   }, []);
 

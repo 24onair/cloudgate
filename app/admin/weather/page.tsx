@@ -994,12 +994,12 @@ export default function WeatherPage() {
       {editSite !== null && (
         <LaunchSiteModal
           initial={editSite === "new" ? null : editSite}
-          onSave={(data) => {
+          onSave={async (data) => {
             if (editSite === "new") {
-              const next = addLaunchSite(data);
-              setSelectedId(next.id);
+              const next = await addLaunchSite(data);
+              setSelectedId(next?.id ?? "");
             } else {
-              updateLaunchSite({ ...(editSite as LaunchSite), ...data });
+              await updateLaunchSite({ ...(editSite as LaunchSite), ...data });
             }
             setEditSite(null);
           }}

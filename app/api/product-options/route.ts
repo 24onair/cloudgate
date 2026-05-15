@@ -36,20 +36,23 @@ export async function POST(req: NextRequest) {
     const tenantId = await getTenantId();
     const body = await req.json();
 
-    const { product_id, name, price, is_active } = body;
-    if (!product_id || !name || price === undefined) {
-      return NextResponse.json({ error: "product_id, name, price는 필수입니다." }, { status: 400 });
+    const { product_id, name, price, is_active, description } = body;
+    if (!name || price === undefined) {
+      return NextResponse.json({ error: "name과 price는 필수입니다." }, { status: 400 });
     }
+
+    const insertPayload: Record<string, unknown> = {
+      tenant_id: tenantId,
+      name,
+      price,
+      is_active: is_active ?? true,
+    };
+    if (product_id) insertPayload.product_id = product_id;
+    if (description !== undefined) insertPayload.description = description;
 
     const { data, error } = await supabase
       .from("product_options")
-      .insert({
-        tenant_id: tenantId,
-        product_id,
-        name,
-        price,
-        is_active: is_active ?? true,
-      })
+      .insert(insertPayload)
       .select()
       .single();
 

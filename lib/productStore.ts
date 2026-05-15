@@ -77,12 +77,13 @@ let _optionsCache: ProductOption[] | null = null;
 
 function mapDbProduct(row: Record<string, unknown>): Product {
   const durationMin = typeof row.duration_min === "number" ? row.duration_min : 0;
+  const slug = String(row.slug ?? "");
   return {
-    id: String(row.slug ?? row.id ?? ""),
+    id: slug || String(row.id ?? ""),  // slug 우선 사용 (PATCH/DELETE 키)
     name: String(row.name ?? ""),
     subtitle: String(row.subtitle ?? ""),
     price: Number(row.price ?? 0),
-    duration: durationMin > 0 ? `약 ${durationMin}분` : String(row.duration ?? ""),
+    duration: durationMin > 0 ? `약 ${durationMin}분` : "",
     color: "#2A7AE2",
     images: [],
     popular: Boolean(row.is_featured ?? false),
@@ -103,7 +104,8 @@ function mapDbOption(row: Record<string, unknown>): ProductOption {
 
 async function loadProductsFromApi(): Promise<Product[]> {
   try {
-    const res = await fetch("/api/products");
+    // ?all=true — 관리자 스토어는 비활성 상품 포함 전체 로드
+    const res = await fetch("/api/products?all=true");
     if (!res.ok) return DEFAULT_PRODUCTS;
     const data = await res.json();
     const products = Array.isArray(data) ? data.map(mapDbProduct) : DEFAULT_PRODUCTS;

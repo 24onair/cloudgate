@@ -13,19 +13,24 @@ function toSlug(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-// GET /api/products → is_active 상품 목록 (sort_order 오름차순)
-export async function GET() {
+// GET /api/products
+// ?all=true  → 전체 상품 (관리자용, is_active 무관)
+// 기본       → is_active=true 상품만 (고객용)
+export async function GET(req: NextRequest) {
   try {
     const supabase  = createServerClient() as any;
     const tenantId  = await getTenantId();
+    const all = new URL(req.url).searchParams.get("all") === "true";
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("products")
-      .select("id, slug, name, subtitle, price, duration_min, features, badge, is_featured, sort_order")
+      .select("id, slug, name, subtitle, price, duration_min, features, badge, is_featured, is_active, sort_order")
       .eq("tenant_id", tenantId)
-      .eq("is_active", true)
       .order("sort_order", { ascending: true });
 
+    if (!all) query = query.eq("is_active", true);
+
+    const { data, error } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data ?? []);
   } catch (e: unknown) {
@@ -86,7 +91,7 @@ export async function PATCH(req: NextRequest) {
     const { data, error } = await supabase
       .from("products")
       .update(fields)
-      .eq("id", id)
+      .eq("slug", id)   // 스토어는 slug를 id로 사용
       .eq("tenant_id", tenantId)
       .select()
       .single();
@@ -111,7 +116,7 @@ export async function DELETE(req: NextRequest) {
     const { data, error } = await supabase
       .from("products")
       .update({ is_active: false })
-      .eq("id", id)
+      .eq("slug", id)   // 스토어는 slug를 id로 사용
       .eq("tenant_id", tenantId)
       .select()
       .single();

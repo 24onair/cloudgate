@@ -203,7 +203,7 @@ function flightTitle(f: MyFlight): string {
 }
 
 type SettleView = "monthly" | "weekly" | "daily" | "cumulative";
-type Tab = "today" | "history" | "settlement";
+type Tab = "today" | "history" | "settlement" | "schedule";
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 

@@ -40,6 +40,8 @@ interface ApiBooking {
   pilot_id: string | null;
   memo: string | null;
   pilots: { id: string; name: string } | null;
+  // 멀티 파일럿 배정 (booking_pilots 조인)
+  booking_pilots: { slot_no: number; pilot_id: string; pilots: { id: string; name: string } | null }[] | null;
 }
 
 // ─── Status Config ────────────────────────────────────────────────────────────
@@ -110,19 +112,39 @@ function StatusBadge({ status }: { status: BookingStatus }) {
 
 interface PilotOption { id: string; name: string; }
 
+// 배정된 파일럿 목록을 slot_no 기준으로 정규화
+function normalizeAssignedPilots(
+  booking: ApiBooking,
+): { slot_no: number; pilot_id: string; name: string }[] {
+  const bpList = Array.isArray(booking.booking_pilots) ? booking.booking_pilots : [];
+  return bpList
+    .map((bp) => ({
+      slot_no:  bp.slot_no,
+      pilot_id: bp.pilot_id,
+      name:     bp.pilots?.name ?? "미배정",
+    }))
+    .sort((a, b) => a.slot_no - b.slot_no);
+}
+
 function DetailPanel({
   booking,
   onClose,
   onStatusChange,
-  onPilotChange,
+  onBookingUpdate,
 }: {
   booking: ApiBooking;
   onClose: () => void;
   onStatusChange: (id: string, status: BookingStatus) => Promise<void>;
-  onPilotChange: (id: string, pilotId: string | null) => Promise<void>;
+  onBookingUpdate: (updated: ApiBooking) => void;
 }) {
-  const [pilots, setPilots]       = useState<PilotOption[]>([]);
-  const [assigning, setAssigning] = useState(false);
+  const [pilots, setPilots]             = useState<PilotOption[]>([]);
+  const [assigning, setAssigning]       = useState<number | null>(null); // slot_no
+  const [assignedPilots, setAssignedPilots] = useState(() => normalizeAssignedPilots(booking));
+
+  // booking prop이 바뀌면 (외부에서 새로고침 후 업데이트) 동기화
+  useEffect(() => {
+    setAssignedPilots(normalizeAssignedPilots(booking));
+  }, [booking.id, booking.booking_pilots]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 패널 열릴 때 파일럿 목록 조회
   useEffect(() => {
@@ -132,10 +154,51 @@ function DetailPanel({
       .catch(() => {});
   }, []);
 
-  async function handlePilotSelect(pilotId: string) {
-    setAssigning(true);
-    await onPilotChange(booking.id, pilotId || null);
-    setAssigning(false);
+  // slot_no 슬롯에 파일럿 배정 또는 변경
+  async function handleAssignSlot(slotNo: number, pilotId: string) {
+    setAssigning(slotNo);
+    try {
+      // 기존 슬롯에 다른 파일럿이 있으면 먼저 제거
+      const existing = assignedPilots.find((a) => a.slot_no === slotNo);
+      if (existing && existing.pilot_id !== pilotId) {
+        await fetch("/api/booking-pilots", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ booking_id: booking.id, pilot_id: existing.pilot_id }),
+        });
+      }
+      if (!pilotId) {
+        // 선택 해제 — 해당 슬롯 제거
+        if (existing) {
+          await fetch("/api/booking-pilots", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ booking_id: booking.id, pilot_id: existing.pilot_id }),
+          });
+        }
+        setAssignedPilots((prev) => prev.filter((a) => a.slot_no !== slotNo));
+      } else {
+        // 배정
+        const res = await fetch("/api/booking-pilots", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ booking_id: booking.id, pilot_id: pilotId, slot_no: slotNo }),
+        });
+        if (res.ok) {
+          const pilot = pilots.find((p) => p.id === pilotId);
+          setAssignedPilots((prev) => {
+            const filtered = prev.filter((a) => a.slot_no !== slotNo && a.pilot_id !== pilotId);
+            return [...filtered, { slot_no: slotNo, pilot_id: pilotId, name: pilot?.name ?? "" }]
+              .sort((a, b) => a.slot_no - b.slot_no);
+          });
+          // 상위 상태도 업데이트 (booking_pilots 동기화)
+          const bookingRes = await fetch(`/api/bookings/${booking.id}`);
+          if (bookingRes.ok) onBookingUpdate(await bookingRes.json());
+        }
+      }
+    } finally {
+      setAssigning(null);
+    }
   }
 
   const nextActions: { label: string; status: BookingStatus; color: string }[] = [];
@@ -227,34 +290,66 @@ function DetailPanel({
             </div>
           </div>
 
-          {/* Pilot */}
+          {/* 파일럿 배정 — headcount 기준 멀티 슬롯 */}
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">파일럿 배정</p>
-            <div
-              className="rounded-xl px-4 py-3"
-              style={{
-                background: booking.pilots ? "#F0FDF4" : "#FFFBEB",
-                border: `1px solid ${booking.pilots ? "#BBF7D0" : "#FDE68A"}`,
-              }}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <Plane className="w-4 h-4" style={{ color: booking.pilots ? "#059669" : "#D97706" }} />
-                <span className="text-xs font-medium" style={{ color: booking.pilots ? "#065F46" : "#92400E" }}>
-                  {booking.pilots ? `${booking.pilots.name} 배정됨` : "미배정"}
-                </span>
-              </div>
-              <select
-                disabled={assigning}
-                value={booking.pilot_id ?? ""}
-                onChange={(e) => handlePilotSelect(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white text-gray-800 focus:outline-none focus:border-blue-400 disabled:opacity-60"
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">파일럿 배정</p>
+              <span
+                className="text-xs font-bold px-2 py-0.5 rounded-full"
+                style={{
+                  background: assignedPilots.length >= booking.headcount ? "#DCFCE7" : "#FEF3C7",
+                  color:      assignedPilots.length >= booking.headcount ? "#15803D" : "#D97706",
+                }}
               >
-                <option value="">— 파일럿 선택 —</option>
-                {pilots.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-              {assigning && <p className="text-xs text-gray-400 mt-1">배정 중...</p>}
+                {assignedPilots.length}/{booking.headcount}명 배정
+              </span>
+            </div>
+            <div className="space-y-2">
+              {Array.from({ length: booking.headcount }, (_, i) => {
+                const slotNo    = i + 1;
+                const assigned  = assignedPilots.find((a) => a.slot_no === slotNo);
+                const isLoading = assigning === slotNo;
+                // 이미 다른 슬롯에 배정된 파일럿 제외
+                const usedIds = assignedPilots
+                  .filter((a) => a.slot_no !== slotNo)
+                  .map((a) => a.pilot_id);
+                return (
+                  <div
+                    key={slotNo}
+                    className="rounded-xl px-3 py-2.5"
+                    style={{
+                      background: assigned ? "#F0FDF4" : "#FAFAFA",
+                      border: `1px solid ${assigned ? "#BBF7D0" : "#E5E7EB"}`,
+                    }}
+                  >
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                        style={{ background: assigned ? "#059669" : "#9CA3AF" }}
+                      >
+                        {slotNo}
+                      </span>
+                      <span className="text-xs font-medium" style={{ color: assigned ? "#065F46" : "#6B7280" }}>
+                        {assigned ? `${assigned.name} 배정됨` : `${slotNo}번 탑승객 — 미배정`}
+                      </span>
+                    </div>
+                    <select
+                      disabled={isLoading}
+                      value={assigned?.pilot_id ?? ""}
+                      onChange={(e) => handleAssignSlot(slotNo, e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 text-sm bg-white text-gray-800 focus:outline-none focus:border-blue-400 disabled:opacity-60"
+                    >
+                      <option value="">— 파일럿 선택 —</option>
+                      {pilots
+                        .filter((p) => !usedIds.includes(p.id))
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                    </select>
+                    {isLoading && <p className="text-xs text-gray-400 mt-1">배정 중...</p>}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -402,18 +497,10 @@ export default function BookingsPage() {
     }
   };
 
-  // ── 파일럿 배정 ──────────────────────────────────────────────────
-  const handlePilotChange = async (id: string, pilotId: string | null) => {
-    const res = await fetch(`/api/bookings/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pilot_id: pilotId }),
-    });
-    if (res.ok) {
-      const updated = await res.json();
-      setBookings((prev) => prev.map((b) => (b.id === id ? updated : b)));
-      setSelectedBooking((prev) => (prev?.id === id ? updated : prev));
-    }
+  // ── 예약 데이터 업데이트 (멀티 파일럿 배정 후 동기화용) ────────
+  const handleBookingUpdate = (updated: ApiBooking) => {
+    setBookings((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
+    setSelectedBooking((prev) => (prev?.id === updated.id ? updated : prev));
   };
 
   // ── 클라이언트 필터 (검색은 API에서 처리하지만 즉각 반응용) ────
@@ -595,7 +682,7 @@ export default function BookingsPage() {
                     {/* 전화번호 */}
                     <p className="text-xs text-gray-600">{b.customer_phone}</p>
 
-                    {/* 인원 */}
+                    {/* 인원 + 파일럿 배정 현황 */}
                     <div className="flex items-center gap-1">
                       <span
                         className="text-sm font-bold"
@@ -604,11 +691,17 @@ export default function BookingsPage() {
                         {b.headcount}
                       </span>
                       <span className="text-xs text-gray-400">명</span>
-                      <span
-                        className="w-1.5 h-1.5 rounded-full ml-0.5 flex-shrink-0"
-                        style={{ backgroundColor: b.pilot_id ? "#22C55E" : "#F59E0B" }}
-                        title={b.pilot_id ? "파일럿 배정됨" : "미배정"}
-                      />
+                      {(() => {
+                        const assigned = Array.isArray(b.booking_pilots) ? b.booking_pilots.length : (b.pilot_id ? 1 : 0);
+                        const full     = assigned >= b.headcount;
+                        return (
+                          <span
+                            className="w-1.5 h-1.5 rounded-full ml-0.5 flex-shrink-0"
+                            style={{ backgroundColor: full ? "#22C55E" : assigned > 0 ? "#F59E0B" : "#D1D5DB" }}
+                            title={full ? `파일럿 ${assigned}/${b.headcount}명 배정 완료` : assigned > 0 ? `파일럿 ${assigned}/${b.headcount}명 배정 중` : "미배정"}
+                          />
+                        );
+                      })()}
                     </div>
 
                     {/* 상품 */}
@@ -646,7 +739,7 @@ export default function BookingsPage() {
           booking={selectedBooking}
           onClose={() => setSelectedBooking(null)}
           onStatusChange={handleStatusChange}
-          onPilotChange={handlePilotChange}
+          onBookingUpdate={handleBookingUpdate}
         />
       )}
     </>

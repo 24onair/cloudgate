@@ -126,6 +126,18 @@ export interface Database {
         Insert: Omit<Database["public"]["Tables"]["flight_records"]["Row"], "id" | "created_at">;
         Update: Partial<Database["public"]["Tables"]["flight_records"]["Insert"]>;
       };
+      booking_pilots: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          booking_id: string;
+          pilot_id: string;
+          slot_no: number;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["booking_pilots"]["Row"], "id" | "created_at">;
+        Update: Partial<Database["public"]["Tables"]["booking_pilots"]["Insert"]>;
+      };
       settlements: {
         Row: {
           id: string;

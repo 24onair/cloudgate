@@ -22,16 +22,23 @@ import {
 type FlightStatus = "confirmed" | "waiting" | "boarding" | "flying" | "landed" | "completed" | "cancelled";
 type DbBookingStatus = "pending" | "confirmed" | "flying" | "completed" | "cancelled";
 
+interface AssignedPilot {
+  pilot_id: string;
+  slot_no: number;
+  pilots: { id: string; name: string } | null;
+}
+
 interface Flight {
   id: string;          // booking id
   bookingId: string;
   customerName: string;
   product: string;
   productColor: string;
-  pilot: string;
+  pilot: string;          // 대표 파일럿 (첫번째)
   pilotId: string | null;
   pilotInitial: string;
   pilotColor: string;
+  assignedPilots: AssignedPilot[]; // 전체 배정 파일럿
   scheduledTime: string;
   flightDate: string;
   takeoffAt: string | null;
@@ -84,25 +91,31 @@ function mapBookingToFlight(b: any): Flight {
     case "cancelled": uiStatus = "cancelled"; break;
     default:          uiStatus = "waiting";
   }
-  const pilotName = b.pilots?.name ?? "미배정";
+  // booking_pilots가 있으면 slot_no=1 파일럿을 대표로, 없으면 pilot_id 폴백
+  const bpList: AssignedPilot[] = Array.isArray(b.booking_pilots)
+    ? [...b.booking_pilots].sort((a: AssignedPilot, bb: AssignedPilot) => a.slot_no - bb.slot_no)
+    : [];
+  const primaryPilot = bpList[0]?.pilots ?? b.pilots ?? null;
+  const pilotName    = primaryPilot?.name ?? "미배정";
   return {
-    id:            b.id,
-    bookingId:     b.id,
-    customerName:  b.customer_name,
-    product:       b.product_name,
-    productColor:  productColor(b.product_name ?? ""),
-    pilot:         pilotName,
-    pilotId:       b.pilot_id ?? null,
-    pilotInitial:  pilotName[0],
-    pilotColor:    pilotColorFromName(pilotName),
-    scheduledTime: b.flight_time ?? "",
-    flightDate:    b.flight_date ?? "",
-    takeoffAt:     null,
-    landedAt:      null,
-    completedAt:   null,
-    status:        uiStatus,
-    pax:           b.headcount ?? 1,
-    memo:          b.memo ?? "",
+    id:             b.id,
+    bookingId:      b.id,
+    customerName:   b.customer_name,
+    product:        b.product_name,
+    productColor:   productColor(b.product_name ?? ""),
+    pilot:          pilotName,
+    pilotId:        b.pilot_id ?? null,
+    pilotInitial:   pilotName[0],
+    pilotColor:     pilotColorFromName(pilotName),
+    assignedPilots: bpList,
+    scheduledTime:  b.flight_time ?? "",
+    flightDate:     b.flight_date ?? "",
+    takeoffAt:      null,
+    landedAt:       null,
+    completedAt:    null,
+    status:         uiStatus,
+    pax:            b.headcount ?? 1,
+    memo:           b.memo ?? "",
   };
 }
 
@@ -213,12 +226,39 @@ function FlightCard({
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="text-xs font-medium" style={{ color: flight.productColor }}>{flight.product}</span>
               <span className="text-gray-300">·</span>
-              <span className="flex items-center gap-1 text-xs text-gray-400">
-                <span className="w-4 h-4 rounded-md flex items-center justify-center text-white text-xs font-bold"
-                  style={{ background: flight.pilotColor, fontSize: 9 }}>
-                  {flight.pilotInitial}
-                </span>
-                {flight.pilot}
+              {/* 파일럿 아바타 — 다수 배정 시 겹쳐서 표시 */}
+              <span className="flex items-center gap-0.5">
+                {flight.assignedPilots.length > 0 ? (
+                  <>
+                    <span className="flex items-center" style={{ gap: "-4px" }}>
+                      {flight.assignedPilots.slice(0, 3).map((ap, i) => {
+                        const name = ap.pilots?.name ?? "?";
+                        return (
+                          <span
+                            key={ap.pilot_id}
+                            className="w-4 h-4 rounded-full flex items-center justify-center text-white font-bold border border-white"
+                            style={{ background: pilotColorFromName(name), fontSize: 8, marginLeft: i > 0 ? -4 : 0, zIndex: i }}
+                            title={name}
+                          >
+                            {name[0]}
+                          </span>
+                        );
+                      })}
+                    </span>
+                    <span className="text-xs text-gray-400 ml-1">
+                      {flight.assignedPilots.length === 1
+                        ? flight.assignedPilots[0].pilots?.name ?? flight.pilot
+                        : `${flight.assignedPilots.length}명 배정`}
+                    </span>
+                    {flight.assignedPilots.length < flight.pax && (
+                      <span className="text-xs font-bold" style={{ color: "#D97706" }}>
+                        ({flight.assignedPilots.length}/{flight.pax})
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-xs text-amber-500 font-medium">미배정</span>
+                )}
               </span>
             </div>
           </div>

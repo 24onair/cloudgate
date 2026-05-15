@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("bookings")
-      .select("*, pilots(id, name)")
+      .select("*, pilots(id, name), booking_pilots(slot_no, pilot_id, pilots(id, name))")
       .eq("tenant_id", tenantId)
       .order("flight_date", { ascending: true })
       .order("flight_time", { ascending: true });

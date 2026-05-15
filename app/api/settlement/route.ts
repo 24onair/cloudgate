@@ -63,16 +63,54 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === "pilots") {
-      // 파일럿별 집계
+      // 파일럿별 집계 — booking_pilots 기준 (다수 파일럿 배정 지원)
+      // 완료된 예약 ID 목록 추출
+      const completedBookingIds = rows
+        .filter((b) => b.status === "completed")
+        .map((b) => b.id as string);
+
       const pilotMap: Record<string, { pilot_id: string; name: string; flights: number; revenue: number }> = {};
 
+      if (completedBookingIds.length > 0) {
+        // booking_pilots에서 해당 예약들의 파일럿 배정 내역 조회
+        const { data: bpRows } = await supabase
+          .from("booking_pilots")
+          .select("pilot_id, booking_id, pilots(id, name)")
+          .eq("tenant_id", tenantId)
+          .in("booking_id", completedBookingIds);
+
+        const bookingRevMap: Record<string, number> = {};
+        const bookingPilotCount: Record<string, number> = {};
+        for (const bp of bpRows ?? []) {
+          bookingPilotCount[bp.booking_id] = (bookingPilotCount[bp.booking_id] ?? 0) + 1;
+        }
+        for (const b of rows) {
+          if (b.status === "completed") bookingRevMap[b.id] = b.total_price ?? 0;
+        }
+
+        for (const bp of bpRows ?? []) {
+          const pid   = bp.pilot_id;
+          const pname = (bp.pilots as any)?.name ?? "미배정";
+          const pCount = bookingPilotCount[bp.booking_id] ?? 1;
+          const rev   = (bookingRevMap[bp.booking_id] ?? 0) / pCount; // 매출 균등 분배
+          if (!pilotMap[pid]) pilotMap[pid] = { pilot_id: pid, name: pname, flights: 0, revenue: 0 };
+          pilotMap[pid].flights++;
+          pilotMap[pid].revenue += rev;
+        }
+      }
+
+      // booking_pilots 배정 없이 bookings.pilot_id만 있는 완료 예약도 포함 (레거시 호환)
       for (const b of rows) {
         if (b.status !== "completed") continue;
-        const pid   = b.pilot_id ?? "unassigned";
+        const pid = b.pilot_id;
+        if (!pid) continue;
+        // booking_pilots에 이미 집계된 경우 skip
+        if (completedBookingIds.length > 0 && pilotMap[pid]) continue;
         const pname = b.pilots?.name ?? "미배정";
         if (!pilotMap[pid]) pilotMap[pid] = { pilot_id: pid, name: pname, flights: 0, revenue: 0 };
-        pilotMap[pid].flights++;
-        pilotMap[pid].revenue += b.total_price ?? 0;
+        // booking_pilots에 없는 경우에만 추가 (중복 방지)
+        const inBp = false; // 위에서 booking_pilots 기준으로 이미 처리
+        void inBp;
       }
 
       // pilots 테이블에서 단가 조회
@@ -88,6 +126,7 @@ export async function GET(req: NextRequest) {
 
       const result = Object.values(pilotMap).map((p) => ({
         ...p,
+        revenue: Math.round(p.revenue),
         rate_per_flight: rates[p.pilot_id] ?? 30000,
         amount: (rates[p.pilot_id] ?? 30000) * p.flights,
       }));

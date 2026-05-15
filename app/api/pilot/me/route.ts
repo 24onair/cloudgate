@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
 
     const { data: pilot, error } = await supabase
       .from("pilots")
-      .select("id, name, license_expiry, total_flights, status, rate_per_flight")
+      .select("id, name, license_expiry, status, rate_per_flight")
       .eq("id", pilotId)
       .eq("tenant_id", tenantId)
       .single();

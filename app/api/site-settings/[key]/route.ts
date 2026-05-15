@@ -21,7 +21,8 @@ export async function GET(
       .maybeSingle();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(data?.value ?? {});
+    // 스토어가 { value: ... } 형태를 기대하므로 래퍼로 반환
+    return NextResponse.json({ value: data?.value ?? null });
   } catch (e: unknown) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

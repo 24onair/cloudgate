@@ -158,12 +158,15 @@ export function generateSlotTimes(cfg: SlotConfig): string[] {
   return out;
 }
 
-// ── 가용 파일럿 카운트 (working + standby) ─────────────
+// ── 가용 파일럿 카운트 ─────────────────────────────────
+// 스케줄 기록이 없는 파일럿 = 기본 출근(가용)으로 간주
+// 명시적으로 "off" 또는 "etc"로 지정된 파일럿만 제외
 export function countAvailablePilots(date: string, schedules: AllSchedules): number {
   let count = 0;
   for (const pilotId of Object.keys(schedules)) {
     const s = schedules[pilotId]?.[date];
-    if (s === "working" || s === "standby") count++;
+    // 명시적 휴무/기타가 아니면 가용 (undefined, "working", "standby" 모두 포함)
+    if (s !== "off" && s !== "etc") count++;
   }
   return count;
 }

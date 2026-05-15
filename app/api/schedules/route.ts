@@ -56,6 +56,17 @@ export async function GET(req: NextRequest) {
       grouped[pilotId][dateKey] = uiStatus;
     }
 
+    // 스케줄 기록이 없는 재직 파일럿도 포함 (기본값 = 출근/가용)
+    // 이렇게 해야 예약 페이지의 countAvailablePilots()가 정확히 동작함
+    const { data: pilotRows } = await supabase
+      .from("pilots")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active");
+    for (const p of pilotRows ?? []) {
+      if (!grouped[p.id]) grouped[p.id] = {};
+    }
+
     return NextResponse.json(grouped);
   } catch (e: unknown) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

@@ -1484,8 +1484,19 @@ export default function PilotsPage() {
 
   useEffect(() => { fetchPilots(); }, [fetchPilots]);
 
-  const activePilots   = useMemo(() => pilots.filter((p) => p.active), [pilots]);
-  const inactivePilots = useMemo(() => pilots.filter((p) => !p.active), [pilots]);
+  // allSchedules가 로드되면 오늘 실제 스케줄로 todayStatus를 갱신
+  const pilotsWithStatus = useMemo(() => {
+    if (Object.keys(allSchedules).length === 0) return pilots;
+    return pilots.map((p) => {
+      const todaySchedule = allSchedules[p.id]?.[TODAY_STR];
+      // 명시적 스케줄이 있으면 그대로, 없으면 기본값 "working"
+      const todayStatus: ScheduleStatus = (todaySchedule as ScheduleStatus) ?? "working";
+      return { ...p, todayStatus };
+    });
+  }, [pilots, allSchedules]);
+
+  const activePilots   = useMemo(() => pilotsWithStatus.filter((p) => p.active), [pilotsWithStatus]);
+  const inactivePilots = useMemo(() => pilotsWithStatus.filter((p) => !p.active), [pilotsWithStatus]);
 
   async function deactivatePilot(id: string, reason: InactiveReason, note: string) {
     // 낙관적 UI 업데이트

@@ -138,10 +138,10 @@ function mapDbPilot(p: any): Pilot {
 
 // ── 상수 ────────────────────────────────────────────────────────
 const SCHEDULE_CFG: Record<ScheduleStatus, { label: string; color: string; bg: string; icon: typeof Clock }> = {
-  working: { label: "출근", color: "#2A7AE2", bg: "#EFF6FF", icon: Plane },
-  standby: { label: "대기", color: "#10B981", bg: "#ECFDF5", icon: Clock },
-  off: { label: "휴무", color: "#6B7280", bg: "#F3F4F6", icon: Coffee },
-  etc:   { label: "기타", color: "#8B5CF6", bg: "#F5F3FF", icon: Home },
+  working: { label: "출근", color: "#16A34A", bg: "#DCFCE7", icon: Plane },
+  standby: { label: "대기", color: "#D97706", bg: "#FEF3C7", icon: Clock },
+  off:     { label: "휴무", color: "#DC2626", bg: "#FEE2E2", icon: Coffee },
+  etc:     { label: "기타", color: "#7C3AED", bg: "#EDE9FE", icon: Home },
 };
 
 const LICENSE_CFG: Record<LicenseStatus, { label: string; color: string; bg: string; icon: typeof CheckCircle2 }> = {

@@ -20,10 +20,10 @@ export type AllScheduleNotes = Record<string, Record<string, string>>;
 export const PILOTS_META: PilotMeta[] = [];
 
 export const SCHEDULE_CFG: Record<ScheduleStatus, { label: string; color: string; bg: string }> = {
-  working: { label: "출근",  color: "#2A7AE2", bg: "#EFF6FF" },
-  standby: { label: "대기",  color: "#10B981", bg: "#ECFDF5" },
-  off:     { label: "휴무",  color: "#6B7280", bg: "#F3F4F6" },
-  etc:     { label: "기타",  color: "#8B5CF6", bg: "#F5F3FF" },
+  working: { label: "출근", color: "#16A34A", bg: "#DCFCE7" },
+  standby: { label: "대기", color: "#D97706", bg: "#FEF3C7" },
+  off:     { label: "휴무", color: "#DC2626", bg: "#FEE2E2" },
+  etc:     { label: "기타", color: "#7C3AED", bg: "#EDE9FE" },
 };
 
 const EVENT_KEY = "gureum_schedule_update";

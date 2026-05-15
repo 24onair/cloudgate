@@ -890,10 +890,10 @@ export default function PilotPortalPage() {
   // ── Schedule Tab ─────────────────────────────────────────────────────────────
   const ScheduleTab = () => {
     const statusConfig: Record<string, { label: string; bg: string; color: string }> = {
-      working:  { label: "출근",   bg: "#DCFCE7", color: "#16A34A" },
-      off:      { label: "휴무",   bg: "#FEE2E2", color: "#DC2626" },
-      standby:  { label: "대기",   bg: "#FEF3C7", color: "#D97706" },
-      etc:      { label: "기타",   bg: "#EDE9FE", color: "#7C3AED" },
+      working: { label: "출근", bg: "#DCFCE7", color: "#16A34A" },
+      standby: { label: "대기", bg: "#FEF3C7", color: "#D97706" },
+      off:     { label: "휴무", bg: "#FEE2E2", color: "#DC2626" },
+      etc:     { label: "기타", bg: "#EDE9FE", color: "#7C3AED" },
     };
 
     const [y, mo] = scheduleYearMonth.split("-").map(Number);

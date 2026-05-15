@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Wind, ChevronRight, ChevronLeft, CheckCircle2, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { useLogo } from "@/lib/logoStore";
 
 interface DbPilot {
   id: string;
@@ -15,6 +16,7 @@ type Step = "select" | "pin";
 
 export default function PilotLoginPage() {
   const router = useRouter();
+  const logo   = useLogo();
   const [pilots,    setPilots]    = useState<DbPilot[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [step,      setStep]      = useState<Step>("select");
@@ -85,13 +87,23 @@ export default function PilotLoginPage() {
       <div className="w-full max-w-sm">
         {/* 로고 */}
         <div className="flex flex-col items-center mb-8">
-          <div
-            className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3"
-            style={{ backgroundColor: "#F54E00" }}
-          >
-            <Wind className="w-7 h-7 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-white">구름상회</h1>
+          {logo.imageDataUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={logo.imageDataUrl}
+              alt={logo.text || "로고"}
+              className="h-14 w-auto object-contain mb-3"
+              style={{ filter: "brightness(0) invert(1)" }}
+            />
+          ) : (
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3"
+              style={{ backgroundColor: "#F54E00" }}
+            >
+              <Wind className="w-7 h-7 text-white" />
+            </div>
+          )}
+          <h1 className="text-2xl font-bold text-white">{logo.text || "구름상회"}</h1>
           <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>파일럿 포털</p>
         </div>
 
@@ -230,7 +242,7 @@ export default function PilotLoginPage() {
         </div>
 
         <p className="text-center text-xs mt-4" style={{ color: "rgba(255,255,255,0.2)" }}>
-          구름상회 소속 파일럿만 접근할 수 있습니다
+          {logo.text || "구름상회"} 소속 파일럿만 접근할 수 있습니다
         </p>
       </div>
     </div>

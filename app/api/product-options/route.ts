@@ -50,11 +50,21 @@ export async function POST(req: NextRequest) {
     if (product_id) insertPayload.product_id = product_id;
     if (description !== undefined) insertPayload.description = description;
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("product_options")
       .insert(insertPayload)
       .select()
       .single();
+
+    // description 컬럼 없을 때(마이그레이션 전) 제외하고 재시도
+    if (error?.message?.includes("description")) {
+      delete insertPayload.description;
+      ({ data, error } = await supabase
+        .from("product_options")
+        .insert(insertPayload)
+        .select()
+        .single());
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data, { status: 201 });
@@ -73,13 +83,26 @@ export async function PATCH(req: NextRequest) {
     const { id, ...fields } = body;
     if (!id) return NextResponse.json({ error: "id는 필수입니다." }, { status: 400 });
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("product_options")
       .update(fields)
       .eq("id", id)
       .eq("tenant_id", tenantId)
       .select()
       .single();
+
+    // description 컬럼 없을 때(마이그레이션 전) 제외하고 재시도
+    if (error?.message?.includes("description")) {
+      const { description: _d, ...fieldsNoDesc } = fields as Record<string, unknown>;
+      void _d;
+      ({ data, error } = await supabase
+        .from("product_options")
+        .update(fieldsNoDesc)
+        .eq("id", id)
+        .eq("tenant_id", tenantId)
+        .select()
+        .single());
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data);

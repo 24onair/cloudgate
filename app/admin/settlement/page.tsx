@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   TrendingUp,
   Plane,
@@ -16,6 +17,8 @@ import {
   Info,
   RefreshCw,
   CalendarClock,
+  ChevronRight,
+  RotateCcw,
 } from "lucide-react";
 import {
   useSettlement,
@@ -44,7 +47,13 @@ interface PilotRow {
   revenue:        number;
   rate_per_flight:number;
   amount:         number;
-  share?:         number; // 매출 분배 비율 (%) — 클라이언트에서 settlementStore 기준으로 재계산
+  share?:         number; // 매출 분배 비율 (%) — 서버에서 계산되어 내려옴
+  isOverride?:    boolean;
+  year_month?:    string | null;
+  settlement_status?: "calculating" | "confirmed" | "paid" | null;
+  confirmed_at?:  string | null;
+  paid_at?:       string | null;
+  pay_method?:    "transfer" | "cash" | "other" | null;
 }
 
 interface Summary {
@@ -415,39 +424,59 @@ const PERIOD_TABS = [
 ];
 
 export default function SettlementPage() {
+  const router = useRouter();
   const [period, setPeriod] = useState("week");
   const [daily,   setDaily]   = useState<DailyRow[]>([]);
   const [pilots,  setPilots]  = useState<PilotRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [todayCompleted, setTodayCompleted] = useState<CompletedBooking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busyPilotId, setBusyPilotId] = useState<string | null>(null);
+  const [batchBusy, setBatchBusy] = useState<"confirm" | "pay" | null>(null);
+  const [toast, setToast] = useState<{ msg: string; tone: "ok" | "err" } | null>(null);
 
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
+    setNow(new Date());
     const t = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(t);
   }, []);
 
   const { from, to, label } = useMemo(() => periodRange(period), [period]);
   const p = useMemo(() => currentPeriod(), []);
+  // 단일 월(이번 달) 모드일 때만 정산 확정/지급 액션을 노출 (월 단위 정산이 원칙)
+  const isMonthMode = period === "month";
 
   // ── 분배 비율 (settlementStore — localStorage) ──
   const { cfg, overrides } = useSettlement();
 
-  // ── 매출 분배율 기준으로 파일럿 정산액 재계산 ──
-  // API가 반환하는 amount(건당 단가 기반)를 무시하고,
-  // 각 파일럿의 revenue × pilotShare(%) 로 덮어씀
+  // ── 서버 응답을 우선시하되, 슬라이더 즉시 반영을 위한 낙관적 fallback ──
+  // 서버가 share/amount를 이미 계산해 내려보냄. 분배율 슬라이더를 막 움직였을 때만
+  // 서버 갱신 전 값을 클라이언트에서 다시 계산해 표시한다.
   const computedPilots: PilotRow[] = useMemo(() => {
     return pilots.map((pilot) => {
+      // 서버 share가 클라이언트 store와 일치하면 서버값 그대로 사용
       const override = overrides[pilot.pilot_id];
-      const share = override ? override.pilotShare : cfg.defaultPilotShare;
+      const clientShare = override ? override.pilotShare : cfg.defaultPilotShare;
+      const serverShare = pilot.share;
+      if (serverShare !== undefined && serverShare === clientShare) {
+        return pilot;
+      }
+      // 슬라이더 변경 직후: 클라이언트 store 기준으로 재계산
       return {
         ...pilot,
-        share,
-        amount: Math.round((pilot.revenue * share) / 100),
+        share: clientShare,
+        amount: Math.round((pilot.revenue * clientShare) / 100),
       };
     });
   }, [pilots, cfg, overrides]);
+
+  // 토스트 자동 소멸
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2500);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -469,6 +498,87 @@ export default function SettlementPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // ── 정산 상태 전환 액션 ──
+  const callSettlementAction = useCallback(async (
+    action: "confirm" | "pay" | "revert",
+    target: { pilotId?: string; pilotIds?: string[]; payMethod?: string },
+  ): Promise<{ ok: boolean; results: { pilot_id: string; ok: boolean; error?: string }[] }> => {
+    const yearMonth = p; // 이번 달
+    const body: Record<string, unknown> = { action, year_month: yearMonth };
+    if (target.pilotIds) body.pilot_ids = target.pilotIds;
+    else if (target.pilotId) body.pilot_id = target.pilotId;
+    if (target.payMethod) body.pay_method = target.payMethod;
+
+    const res = await fetch("/api/settlement", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error ?? `요청 실패 (${res.status})`);
+    }
+    return res.json();
+  }, [p]);
+
+  const handleSingleAction = useCallback(async (pilot: PilotRow, action: "confirm" | "pay" | "revert") => {
+    if (!isMonthMode) {
+      setToast({ msg: "정산은 '이번 달' 모드에서만 가능합니다", tone: "err" });
+      return;
+    }
+    const verbMap = { confirm: "확정", pay: "지급 완료", revert: "되돌리기" };
+    const msg = `${pilot.name} 파일럿의 ${p} 정산을 ${verbMap[action]}하시겠습니까?`;
+    if (!window.confirm(msg)) return;
+    setBusyPilotId(pilot.pilot_id);
+    try {
+      const r = await callSettlementAction(action, { pilotId: pilot.pilot_id });
+      const failed = r.results.filter((x) => !x.ok);
+      if (failed.length > 0) {
+        setToast({ msg: failed[0].error ?? "처리 실패", tone: "err" });
+      } else {
+        setToast({ msg: `${pilot.name}: ${verbMap[action]} 완료`, tone: "ok" });
+      }
+      await fetchData();
+    } catch (e) {
+      setToast({ msg: (e as Error).message, tone: "err" });
+    } finally {
+      setBusyPilotId(null);
+    }
+  }, [callSettlementAction, fetchData, p, isMonthMode]);
+
+  const handleBatchAction = useCallback(async (action: "confirm" | "pay") => {
+    if (!isMonthMode) {
+      setToast({ msg: "정산은 '이번 달' 모드에서만 가능합니다", tone: "err" });
+      return;
+    }
+    const targets = action === "confirm"
+      ? computedPilots.filter((x) => x.settlement_status !== "confirmed" && x.settlement_status !== "paid")
+      : computedPilots.filter((x) => x.settlement_status === "confirmed");
+    if (targets.length === 0) {
+      setToast({ msg: action === "confirm" ? "확정 가능한 파일럿이 없습니다" : "지급 가능한 파일럿이 없습니다", tone: "err" });
+      return;
+    }
+    const verb = action === "confirm" ? "확정" : "지급 완료";
+    if (!window.confirm(`${targets.length}명 파일럿의 ${p} 정산을 일괄 ${verb}하시겠습니까?\n\n대상: ${targets.map((t) => t.name).join(", ")}`)) return;
+    setBatchBusy(action);
+    try {
+      const r = await callSettlementAction(action, { pilotIds: targets.map((t) => t.pilot_id) });
+      const okCount = r.results.filter((x) => x.ok).length;
+      const failCount = r.results.length - okCount;
+      setToast({
+        msg: failCount === 0
+          ? `${okCount}명 ${verb} 완료`
+          : `${okCount}명 성공, ${failCount}명 실패`,
+        tone: failCount === 0 ? "ok" : "err",
+      });
+      await fetchData();
+    } catch (e) {
+      setToast({ msg: (e as Error).message, tone: "err" });
+    } finally {
+      setBatchBusy(null);
+    }
+  }, [callSettlementAction, computedPilots, fetchData, p, isMonthMode]);
+
   // ── KPI 계산 ──
   const totalRevenue  = daily.reduce((s, d) => s + d.revenue, 0);
   const totalFlights  = daily.reduce((s, d) => s + d.flights, 0);
@@ -480,7 +590,9 @@ export default function SettlementPage() {
   const prevRevenue = summary?.prevRevenue ?? 0;
   const revenueChange = prevRevenue > 0 ? Math.round(((totalRevenue - prevRevenue) / prevRevenue) * 100) : null;
 
-  const nowStr = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const nowStr = now
+    ? `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
+    : "";
 
   return (
     <div className="p-6 max-w-7xl">
@@ -490,7 +602,7 @@ export default function SettlementPage() {
         <div>
           <div className="flex items-baseline gap-3">
             <h1 className="text-2xl font-bold" style={{ color: "#0D2B52" }}>계산대</h1>
-            <span className="text-sm font-medium" style={{ color: "#2A7AE2" }}>{nowStr}</span>
+            <span className="text-sm font-medium" style={{ color: "#2A7AE2" }} suppressHydrationWarning>{nowStr}</span>
           </div>
           <p className="text-sm text-gray-400 mt-0.5">매출 & 정산 현황 · {label}</p>
         </div>
@@ -607,43 +719,116 @@ export default function SettlementPage() {
 
         {/* 파일럿 정산 */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
-            <div>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50 gap-2">
+            <div className="min-w-0">
               <h3 className="font-semibold text-gray-900">파일럿 정산 현황</h3>
-              <p className="text-xs text-gray-400">{label}</p>
+              <p className="text-xs text-gray-400 truncate">
+                {label}
+                {!isMonthMode && <span className="text-amber-600 ml-1">· 정산 액션은 &lsquo;이번 달&rsquo;에서만</span>}
+              </p>
             </div>
+            {isMonthMode && computedPilots.length > 0 && (
+              <div className="flex gap-1 flex-shrink-0">
+                <button
+                  onClick={() => handleBatchAction("confirm")}
+                  disabled={batchBusy !== null}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-50"
+                  style={{ backgroundColor: "#0D2B52" }}
+                  title="확정 가능한 파일럿 일괄 확정"
+                >
+                  {batchBusy === "confirm" ? "처리중…" : "전체 확정"}
+                </button>
+                <button
+                  onClick={() => handleBatchAction("pay")}
+                  disabled={batchBusy !== null}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-50"
+                  style={{ backgroundColor: "#15803D" }}
+                  title="확정된 파일럿 일괄 지급"
+                >
+                  {batchBusy === "pay" ? "처리중…" : "전체 지급"}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="grid px-5 py-2.5 text-xs font-semibold text-gray-400 border-b border-gray-50"
-            style={{ gridTemplateColumns: "1fr 0.6fr 0.6fr 1fr" }}>
+            style={{ gridTemplateColumns: "1.4fr 0.5fr 0.5fr 0.9fr 1.2fr" }}>
             <span>파일럿</span>
             <span className="text-right">건수</span>
             <span className="text-right">비율</span>
             <span className="text-right">정산액</span>
+            <span className="text-right">상태/액션</span>
           </div>
 
           {loading ? (
             <div className="px-5 py-8 text-center text-sm text-gray-400">불러오는 중…</div>
           ) : computedPilots.length === 0 ? (
             <div className="px-5 py-8 text-center text-sm text-gray-400">정산 데이터 없음</div>
-          ) : computedPilots.map((p) => (
-            <div key={p.pilot_id}
-              className="grid items-center px-5 py-3.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors"
-              style={{ gridTemplateColumns: "1fr 0.6fr 0.6fr 1fr" }}>
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                  style={{ backgroundColor: "#0D2B52" }}>{p.name[0]}</div>
-                <span className="text-sm font-medium text-gray-800">{p.name}</span>
+          ) : computedPilots.map((pilot) => {
+            const status = pilot.settlement_status;
+            const isConfirmed = status === "confirmed";
+            const isPaid      = status === "paid";
+            const isBusy      = busyPilotId === pilot.pilot_id;
+            return (
+              <div key={pilot.pilot_id}
+                className="grid items-center px-5 py-3.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors cursor-pointer"
+                style={{ gridTemplateColumns: "1.4fr 0.5fr 0.5fr 0.9fr 1.2fr" }}
+                onClick={() => router.push(`/admin/settlement/pilot/${pilot.pilot_id}?period=${p}`)}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                    style={{ backgroundColor: "#0D2B52" }}>{pilot.name[0]}</div>
+                  <span className="text-sm font-medium text-gray-800 truncate">{pilot.name}</span>
+                  {pilot.isOverride && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">예외</span>
+                  )}
+                </div>
+                <span className="text-sm text-gray-600 text-right">{pilot.flights}건</span>
+                <span className="text-sm font-semibold text-right" style={{ color: "#2A7AE2" }}>{pilot.share ?? cfg.defaultPilotShare}%</span>
+                <span className="text-sm font-semibold text-right" style={{ color: "#0D2B52" }}>{pilot.amount.toLocaleString()}원</span>
+                <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                  {!isMonthMode ? (
+                    <ChevronRight className="w-4 h-4 text-gray-300" />
+                  ) : isPaid ? (
+                    <>
+                      <span className="text-[10px] px-2 py-1 rounded font-bold" style={{ backgroundColor: "#DCFCE7", color: "#15803D" }}>
+                        ✓ 지급완료
+                      </span>
+                      <button onClick={() => handleSingleAction(pilot, "revert")} disabled={isBusy}
+                        className="p-1 rounded hover:bg-gray-100 disabled:opacity-50" title="되돌리기">
+                        <RotateCcw className="w-3.5 h-3.5 text-gray-400" />
+                      </button>
+                    </>
+                  ) : isConfirmed ? (
+                    <>
+                      <span className="text-[10px] px-2 py-1 rounded font-bold" style={{ backgroundColor: "#DBEAFE", color: "#1D4ED8" }}>
+                        확정
+                      </span>
+                      <button onClick={() => handleSingleAction(pilot, "pay")} disabled={isBusy}
+                        className="px-2 py-1 rounded text-[10px] font-bold text-white disabled:opacity-50"
+                        style={{ backgroundColor: "#15803D" }}>
+                        {isBusy ? "..." : "지급"}
+                      </button>
+                      <button onClick={() => handleSingleAction(pilot, "revert")} disabled={isBusy}
+                        className="p-1 rounded hover:bg-gray-100 disabled:opacity-50" title="확정 취소">
+                        <RotateCcw className="w-3.5 h-3.5 text-gray-400" />
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => handleSingleAction(pilot, "confirm")} disabled={isBusy}
+                      className="px-2.5 py-1 rounded text-[10px] font-bold text-white disabled:opacity-50"
+                      style={{ backgroundColor: "#0D2B52" }}>
+                      {isBusy ? "..." : "확정"}
+                    </button>
+                  )}
+                </div>
               </div>
-              <span className="text-sm text-gray-600 text-right">{p.flights}건</span>
-              <span className="text-sm font-semibold text-right" style={{ color: "#2A7AE2" }}>{p.share ?? cfg.defaultPilotShare}%</span>
-              <span className="text-sm font-semibold text-right" style={{ color: "#0D2B52" }}>{p.amount.toLocaleString()}원</span>
-            </div>
-          ))}
+            );
+          })}
 
           {computedPilots.length > 0 && (
             <div className="grid px-5 py-3.5 border-t-2 border-gray-100"
-              style={{ gridTemplateColumns: "1fr 0.6fr 0.6fr 1fr" }}>
+              style={{ gridTemplateColumns: "1.4fr 0.5fr 0.5fr 0.9fr 1.2fr" }}>
               <span className="text-sm font-semibold text-gray-700">합계</span>
               <span className="text-sm font-semibold text-gray-700 text-right">
                 {computedPilots.reduce((s, p) => s + p.flights, 0)}건
@@ -652,6 +837,7 @@ export default function SettlementPage() {
               <span className="text-sm font-bold text-right" style={{ color: "#0D2B52" }}>
                 {totalPilotFee.toLocaleString()}원
               </span>
+              <span />
             </div>
           )}
         </div>
@@ -707,6 +893,13 @@ export default function SettlementPage() {
           )}
         </div>
       </div>
+
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium text-white animate-[fadeIn_0.2s_ease]"
+          style={{ backgroundColor: toast.tone === "ok" ? "#15803D" : "#DC2626" }}>
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 }

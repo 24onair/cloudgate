@@ -38,6 +38,10 @@ create table if not exists pilots (
   rate_per_flight  integer default 30000,      -- 비행 1건당 정산 단가(원)
   photo_url        text,                       -- 프로필 사진 (base64 or Storage URL)
   memo             text,
+  -- 계좌 정보 (정산서 표시용)
+  bank_name        text,
+  account_number   text,
+  account_holder   text,
   -- 퇴직/복직 관련
   inactive_reason  text
     check (inactive_reason in ('resignation','retirement','contract_end','other')),
@@ -152,9 +156,14 @@ create table if not exists settlements (
   total_amount    integer not null,          -- 지급 금액
   status          text default 'calculating'
     check (status in ('calculating','confirmed','paid')),
+  confirmed_at    timestamptz,
   paid_at         timestamptz,
-  memo            text,
+  pay_method      text check (pay_method in ('transfer','cash','other')),
+  pay_memo        text,
+  share_snapshot  jsonb,                       -- 확정 시점 분배율 스냅샷 {share, isOverride, locked_at}
+  memo            text,                        -- 관리자 메모
   created_at      timestamptz default now(),
+  updated_at      timestamptz default now(),
   unique(pilot_id, year_month)
 );
 

@@ -30,6 +30,9 @@ export interface Database {
           status: "active" | "inactive";
           rate_per_flight: number;
           memo: string | null;
+          bank_name: string | null;
+          account_number: string | null;
+          account_holder: string | null;
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["pilots"]["Row"], "id" | "created_at">;
@@ -148,11 +151,16 @@ export interface Database {
           rate_per_flight: number;
           total_amount: number;
           status: "calculating" | "confirmed" | "paid";
+          confirmed_at: string | null;
           paid_at: string | null;
+          pay_method: "transfer" | "cash" | "other" | null;
+          pay_memo: string | null;
+          share_snapshot: Json | null;
           memo: string | null;
           created_at: string;
+          updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["settlements"]["Row"], "id" | "created_at">;
+        Insert: Omit<Database["public"]["Tables"]["settlements"]["Row"], "id" | "created_at" | "updated_at">;
         Update: Partial<Database["public"]["Tables"]["settlements"]["Insert"]>;
       };
       pilot_schedules: {

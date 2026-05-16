@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { getTenantId } from "@/lib/supabase/tenant";
+import { loadShareSettings, resolveShare, pilotAmountForBooking } from "@/lib/settlement/compute";
 
 const KR_DAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -38,9 +39,8 @@ export async function GET(req: NextRequest) {
     const tenantId = await getTenantId();
 
     // ── 1. 분배비율 + 지급일정 설정 로드 ─────────────────────────
-    const [cfgRow, overrideRow, psRow] = await Promise.all([
-      supabase.from("site_settings").select("value").eq("key", "settlement_config").maybeSingle(),
-      supabase.from("site_settings").select("value").eq("key", "settlement_overrides").maybeSingle(),
+    const [shareSettings, psRow] = await Promise.all([
+      loadShareSettings(supabase),
       supabase.from("site_settings").select("value").eq("key", "payment_schedule").maybeSingle(),
     ]);
 
@@ -48,10 +48,7 @@ export async function GET(req: NextRequest) {
     const psConfig: { type: string; monthlyDay: number; weeklyDow: number } =
       psRow.data?.value ?? { type: "monthly", monthlyDay: 10, weeklyDow: 5 };
 
-    const defaultShare: number = cfgRow.data?.value?.defaultPilotShare ?? 60;
-    const overrides: { pilotId: string; pilotShare: number }[] = overrideRow.data?.value ?? [];
-    const pilotOverride = overrides.find((o: any) => o.pilotId === pilotId);
-    const pilotShare: number = pilotOverride?.pilotShare ?? defaultShare; // 이 파일럿의 지분 %
+    const { share: pilotShare, isOverride } = resolveShare(pilotId, shareSettings.defaultShare, shareSettings.overrides);
 
     // ── 2. settlements 테이블 (상태·지급일) ───────────────────────
     const { data: settlRows } = await supabase
@@ -106,8 +103,8 @@ export async function GET(req: NextRequest) {
       // 이 예약에 배정된 파일럿 수 (없으면 1)
       const numPilots: number = booking?.booking_pilots?.length || 1;
 
-      // 파일럿 1인당 분배 금액 = (예약금액 / 파일럿수) × 지분%
-      const pilotAmount = Math.round((totalPrice / numPilots) * pilotShare / 100);
+      // 파일럿 1인당 분배 금액 (compute.ts 공통 함수)
+      const pilotAmount = pilotAmountForBooking(totalPrice, numPilots, pilotShare);
 
       if (!dayMap[d]) dayMap[d] = { count: 0, amount: 0 };
       dayMap[d].count++;
@@ -164,14 +161,14 @@ export async function GET(req: NextRequest) {
         label,
         status,
         pilotShare,           // 이 파일럿의 지분 % (UI 표시용)
-        isOverride: !!pilotOverride,
+        isOverride,
         payment_due,
         paid_at: sRow?.paid_at ? String(sRow.paid_at).slice(0, 10) : undefined,
         days,
       };
     });
 
-    return NextResponse.json({ months, pilotShare, isOverride: !!pilotOverride });
+    return NextResponse.json({ months, pilotShare, isOverride });
   } catch (e: unknown) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }

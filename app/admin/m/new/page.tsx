@@ -56,8 +56,18 @@ interface UiProduct {
   options: { id: string; name: string; price: number }[];
 }
 
+interface DayCapacitySlot {
+  time: string;        // "HH:MM"
+  occupied: number;    // 이미 배정된 파일럿 수
+  free: number;        // active_pilots - occupied (그 시각에 더 받을 수 있는 비행 수)
+  exhausted: boolean;  // free === 0
+}
+
 interface DayCapacity {
   date: string;
+  active_pilots: number;
+  slot_count: number;
+  slots?: DayCapacitySlot[];
   total: number;
   booked: number;
   remaining: number;
@@ -668,27 +678,51 @@ export default function NewMobileBookingPage() {
               <div className="flex gap-2 pb-2 w-max">
                 {slotTimes.map((t) => {
                   const sel = form.time_slot === t;
+                  const slotInfo = dayCap?.slots?.find((s) => s.time === t);
+                  // 슬롯 정보가 아직 없으면(로딩 등) 자리 정보는 비표시.
+                  // 마감(free=0)이어도 클릭은 허용 — 자동 배정 알고리즘이 다음 슬롯으로 spillover.
+                  const full = slotInfo?.exhausted ?? false;
                   return (
                     <button
                       key={t}
                       type="button"
                       onClick={() => patch({ time_slot: t })}
-                      className="px-4 py-2 rounded-xl text-sm font-bold transition active:scale-95 shrink-0"
+                      className="px-4 py-2 rounded-xl transition active:scale-95 shrink-0 flex flex-col items-center gap-0.5"
                       style={{
-                        backgroundColor: sel ? "#0D2B52" : "white",
-                        color: sel ? "white" : "#0D2B52",
-                        border: `1px solid ${sel ? "#0D2B52" : "#E5E7EB"}`,
-                        minWidth: 64,
+                        backgroundColor: sel
+                          ? "#0D2B52"
+                          : full
+                            ? "#F3F4F6"
+                            : "white",
+                        color: sel ? "white" : full ? "#9CA3AF" : "#0D2B52",
+                        border: `1px solid ${
+                          sel ? "#0D2B52" : full ? "#E5E7EB" : "#E5E7EB"
+                        }`,
+                        minWidth: 68,
                       }}
                     >
-                      {t}
+                      <span className="text-sm font-bold leading-tight">{t}</span>
+                      {slotInfo && (
+                        <span
+                          className="text-[10px] font-medium leading-tight"
+                          style={{
+                            color: sel
+                              ? "rgba(255,255,255,0.85)"
+                              : full
+                                ? "#B91C1C"
+                                : "#15803D",
+                          }}
+                        >
+                          {full ? "마감" : `${slotInfo.free}석`}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
               </div>
             </div>
             <div className="mt-2 text-xs" style={{ color: "#9ea096" }}>
-              선택 시간에 자리가 부족하면 이후 시간대로 자동 배정됩니다.
+              마감된 시각을 선택해도 자동 배정이 이후 시각으로 이월합니다.
             </div>
           </>
         )}

@@ -199,7 +199,14 @@ function BookingInner() {
 
   // 실제 예약 가능 인원: 가용 파일럿 − 이미 확정된 예약 headcount 합
   // (그날 슬롯에 자리 부족 시 다음 슬롯으로 자동 이월)
-  const [dayCap, setDayCap] = useState<{ total: number; booked: number; remaining: number } | null>(null);
+  const [dayCap, setDayCap] = useState<{
+    total: number;
+    booked: number;
+    remaining: number;
+    exhausted?: boolean;
+    active_pilots?: number;
+    slots?: { time: string; occupied: number; free: number; exhausted: boolean }[];
+  } | null>(null);
   useEffect(() => {
     if (!selectedDate) { setDayCap(null); return; }
     let cancelled = false;
@@ -373,23 +380,42 @@ function BookingInner() {
             </span>
           </div>
           <p className="text-[11px] mb-3" style={{ color: "#9ea096" }}>
-            선택 시간에 자리가 부족하면 이후 시간대로 자동 배정될 수 있습니다.
+            마감된 시각을 선택하셔도 자동으로 이후 시각에 배정될 수 있습니다.
           </p>
           <div className="grid grid-cols-3 gap-2">
-            {timeSlots.map((t) => (
-              <button
-                key={t}
-                onClick={() => setSelectedTime(t)}
-                className="py-3 rounded-xl text-sm font-medium border-2 transition-all"
-                style={{
-                  borderColor:     selectedTime === t ? "#23251d" : "#bfc1b7",
-                  backgroundColor: selectedTime === t ? "#23251d" : "#fdfdf8",
-                  color:           selectedTime === t ? "white"   : "#4d4f46",
-                }}
-              >
-                {t}
-              </button>
-            ))}
+            {timeSlots.map((t) => {
+              const slotInfo = dayCap?.slots?.find((s) => s.time === t);
+              const isSel = selectedTime === t;
+              const full = slotInfo?.exhausted ?? false;
+              return (
+                <button
+                  key={t}
+                  onClick={() => setSelectedTime(t)}
+                  className="py-3 rounded-xl text-sm font-medium border-2 transition-all flex flex-col items-center gap-0.5"
+                  style={{
+                    borderColor:     isSel ? "#23251d" : full ? "#e5e7eb" : "#bfc1b7",
+                    backgroundColor: isSel ? "#23251d" : full ? "#f3f4f6" : "#fdfdf8",
+                    color:           isSel ? "white"   : full ? "#9ca3af" : "#4d4f46",
+                  }}
+                >
+                  <span className="font-semibold leading-tight">{t}</span>
+                  {slotInfo && (
+                    <span
+                      className="text-[10px] font-medium leading-tight"
+                      style={{
+                        color: isSel
+                          ? "rgba(255,255,255,0.85)"
+                          : full
+                            ? "#B91C1C"
+                            : "#15803D",
+                      }}
+                    >
+                      {full ? "마감" : `${slotInfo.free}석`}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

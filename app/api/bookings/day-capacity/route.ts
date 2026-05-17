@@ -50,6 +50,19 @@ function countSlots(cfg: SlotConfig): number {
   return Math.floor((e - s) / cfg.intervalMinutes) + 1;
 }
 
+function generateSlotTimes(cfg: SlotConfig): string[] {
+  const s = timeToMinutes(cfg.startTime);
+  const e = timeToMinutes(cfg.endTime);
+  if (cfg.intervalMinutes <= 0 || e < s) return [];
+  const out: string[] = [];
+  for (let t = s; t <= e; t += cfg.intervalMinutes) {
+    const h = Math.floor(t / 60);
+    const m = t % 60;
+    out.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+  }
+  return out;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const supabase = createServerClient() as any;
@@ -87,7 +100,7 @@ export async function GET(req: NextRequest) {
       // booking_pilots는 booking 취소 시 자동으로 정리되지 않을 수 있어 join으로 보강.
       supabase
         .from("booking_pilots")
-        .select("id, bookings!inner(status, flight_date)")
+        .select("id, assigned_flight_time, bookings!inner(status, flight_date)")
         .eq("tenant_id", tenantId)
         .eq("bookings.flight_date", date)
         .neq("bookings.status", "cancelled"),
@@ -102,7 +115,24 @@ export async function GET(req: NextRequest) {
     ).length;
 
     const cfg: SlotConfig = { ...DEFAULT_SLOT_CFG, ...(slotCfgRow?.value ?? {}) };
-    const slotCount = countSlots(cfg);
+    const slotTimesList = generateSlotTimes(cfg);
+    const slotCount = slotTimesList.length;
+
+    // 슬롯별 점유 집계 — assigned_flight_time을 "HH:MM"으로 정규화 후 카운트.
+    // 슬롯 capacity = activePilots (그 시각에 한 파일럿이 두 손님을 못 태움).
+    const slotOccupied: Record<string, number> = {};
+    for (const t of slotTimesList) slotOccupied[t] = 0;
+    for (const row of (bpRows ?? []) as Array<{ assigned_flight_time: string | null }>) {
+      const raw = row.assigned_flight_time;
+      if (!raw) continue;
+      const key = String(raw).slice(0, 5); // "HH:MM:SS" or "HH:MM" → "HH:MM"
+      if (key in slotOccupied) slotOccupied[key] += 1;
+    }
+    const slots = slotTimesList.map((time) => {
+      const occupied = slotOccupied[time];
+      const free = Math.max(0, activePilots - occupied);
+      return { time, occupied, free, exhausted: free === 0 };
+    });
 
     const total = activePilots * slotCount;
     const booked = (bpRows ?? []).length;
@@ -112,6 +142,7 @@ export async function GET(req: NextRequest) {
       date,
       active_pilots: activePilots,
       slot_count: slotCount,
+      slots,
       total,
       booked,
       remaining,

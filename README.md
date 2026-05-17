@@ -2,7 +2,19 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+### Required environment variables
+
+Create `.env.local` at the project root with at minimum:
+
+```
+SESSION_SECRET=<openssl rand -hex 32>
+ADMIN_PASSWORD=<your-strong-password>
+```
+
+`SESSION_SECRET` must be at least 32 characters. The admin and pilot login
+routes return HTTP 500 if either variable is missing.
+
+### Run the dev server
 
 ```bash
 npm run dev

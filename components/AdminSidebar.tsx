@@ -22,6 +22,7 @@ import {
   Sliders,
   MessageSquare,
   LogOut,
+  ListOrdered,
 } from "lucide-react";
 
 const menuItems = [
@@ -48,6 +49,12 @@ const menuItems = [
     sublabel: "배정관리",
     icon: Users,
     href: "/admin/pilots",
+  },
+  {
+    label: "파일럿순번",
+    sublabel: "라운드로빈",
+    icon: ListOrdered,
+    href: "/admin/pilots/rotation",
   },
   {
     label: "예약슬롯",

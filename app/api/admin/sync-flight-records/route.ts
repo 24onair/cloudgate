@@ -3,11 +3,15 @@
  * POST /api/admin/sync-flight-records
  * completed 상태인 bookings 중 flight_records가 누락된 건을 소급 생성한다.
  */
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { getTenantId } from "@/lib/supabase/tenant";
+import { requireAdmin } from "@/lib/auth/session";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return auth.response;
+
   try {
     const supabase  = createServerClient() as any;
     const tenantId  = await getTenantId();

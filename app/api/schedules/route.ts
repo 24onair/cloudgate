@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { getTenantId } from "@/lib/supabase/tenant";
+import { findScheduleConflicts } from "@/lib/pilot-assigner/assign";
 
 // DB type → UI status 변환
 const DB_TO_UI: Record<string, string> = {
@@ -84,6 +85,21 @@ export async function POST(req: NextRequest) {
     const { pilotId, date, status } = body;
 
     const dbType = UI_TO_DB[status] ?? status;
+
+    // 배정 충돌 가드: 'off'(휴무) / 'other'(기타)는 비행 불가 상태이므로
+    // 그날 이미 booking_pilots에 배정된 비행이 있으면 변경을 100% 차단한다.
+    if (dbType === "off" || dbType === "other") {
+      const conflicts = await findScheduleConflicts({ supabase, tenantId, pilotId, date });
+      if (conflicts.length > 0) {
+        return NextResponse.json(
+          {
+            error: `${date}에 배정된 비행 ${conflicts.length}건이 있어 스케줄을 변경할 수 없습니다. 어드민이 재배정을 정리한 뒤 다시 시도하세요.`,
+            conflicts,
+          },
+          { status: 409 },
+        );
+      }
+    }
 
     const { data, error } = await supabase
       .from("pilot_schedules")

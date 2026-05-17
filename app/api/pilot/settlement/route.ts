@@ -3,38 +3,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { getTenantId } from "@/lib/supabase/tenant";
 import { loadShareSettings, resolveShare, pilotAmountForBooking } from "@/lib/settlement/compute";
+import { requirePilot } from "@/lib/auth/session";
 
 const KR_DAYS = ["일", "월", "화", "수", "목", "금", "토"];
-
-async function verifyPilotToken(token: string, secret: string): Promise<string | null> {
-  const parts = token.split(".");
-  if (parts.length !== 2) return null;
-  const [pilotIdHex, sigHex] = parts;
-  if (pilotIdHex.length !== 32) return null;
-  try {
-    const key = await crypto.subtle.importKey(
-      "raw", new TextEncoder().encode(secret),
-      { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-    );
-    const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(pilotIdHex));
-    const expected = Array.from(new Uint8Array(sig))
-      .map((b) => b.toString(16).padStart(2, "0")).join("");
-    if (expected !== sigHex) return null;
-    return `${pilotIdHex.slice(0,8)}-${pilotIdHex.slice(8,12)}-${pilotIdHex.slice(12,16)}-${pilotIdHex.slice(16,20)}-${pilotIdHex.slice(20)}`;
-  } catch { return null; }
-}
 
 // GET /api/pilot/settlement
 // 분배비율관리 설정 기반으로 파일럿 정산 계산
 // 계산식: booking.total_price ÷ 해당예약 배정파일럿수 × 파일럿지분%
 export async function GET(req: NextRequest) {
-  try {
-    const token = req.cookies.get("gureum_pilot_session")?.value;
-    if (!token) return NextResponse.json({ error: "미인증" }, { status: 401 });
-    const secret = process.env.SESSION_SECRET ?? "dev-secret-change-in-production";
-    const pilotId = await verifyPilotToken(token, secret);
-    if (!pilotId) return NextResponse.json({ error: "세션 만료" }, { status: 401 });
+  const auth = await requirePilot(req);
+  if (!auth.ok) return auth.response;
+  const pilotId = auth.payload.sub;
 
+  try {
     const supabase = createServerClient() as any;
     const tenantId = await getTenantId();
 

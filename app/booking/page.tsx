@@ -194,7 +194,23 @@ function BookingInner() {
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);  // option UUIDs
   const [headcount,       setHeadcount]       = useState(1);
 
-  const availablePilots = selectedDate ? _countPilots(selectedDate, schedules) : 0;
+  // 달력 셀 표시용(가용 파일럿 수, 그날 예약은 무관)
+  const calendarPilots = selectedDate ? _countPilots(selectedDate, schedules) : 0;
+
+  // 실제 예약 가능 인원: 가용 파일럿 − 이미 확정된 예약 headcount 합
+  // (그날 슬롯에 자리 부족 시 다음 슬롯으로 자동 이월)
+  const [dayCap, setDayCap] = useState<{ total: number; booked: number; remaining: number } | null>(null);
+  useEffect(() => {
+    if (!selectedDate) { setDayCap(null); return; }
+    let cancelled = false;
+    fetch(`/api/bookings/day-capacity?date=${selectedDate}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (!cancelled && j) setDayCap(j); })
+      .catch(() => { /* ignore */ });
+    return () => { cancelled = true; };
+  }, [selectedDate]);
+
+  const availablePilots = dayCap?.remaining ?? calendarPilots;
   const maxHeadcount    = Math.max(1, availablePilots);
 
   const [name,        setName]        = useState("");
@@ -304,6 +320,7 @@ function BookingInner() {
             const date = makeDateStr(calYear, calMonth, day);
             const dow  = (calFirstDow + i) % 7;
             const isPast      = date <= TODAY;
+            // 달력 셀은 가용 파일럿 총수만 비활성/표시(다른 셀의 예약 합산은 API 호출 비용상 생략)
             const pilotCount  = _countPilots(date, schedules);
             const noFlight    = !isPast && pilotCount === 0;
             const weatherRed  = weatherGrade === "RED";
@@ -348,13 +365,16 @@ function BookingInner() {
       {/* 시간 선택 */}
       {selectedDate && availablePilots > 0 && (
         <div>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2">
             <p className="text-sm font-semibold" style={{ color: "#23251d" }}>시간을 선택해 주세요</p>
             <span className="text-xs px-2 py-1 rounded-full font-medium"
               style={{ background: "#F0FDF4", color: "#15803D" }}>
-              최대 {availablePilots}팀 동시 비행 가능
+              남은 자리 {availablePilots}명
             </span>
           </div>
+          <p className="text-[11px] mb-3" style={{ color: "#9ea096" }}>
+            선택 시간에 자리가 부족하면 이후 시간대로 자동 배정될 수 있습니다.
+          </p>
           <div className="grid grid-cols-3 gap-2">
             {timeSlots.map((t) => (
               <button

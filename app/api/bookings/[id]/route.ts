@@ -12,7 +12,7 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     const supabase = createServerClient() as any;
     const { data, error } = await supabase
       .from("bookings")
-      .select("*, pilots(id, name), booking_pilots(slot_no, pilot_id, pilots(id, name))")
+      .select("*, pilots(id, name), booking_pilots(slot_no, pilot_id, assigned_flight_time, pilots(id, name))")
       .eq("id", id)
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 404 });
@@ -34,7 +34,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       .from("bookings")
       .update(body)
       .eq("id", id)
-      .select("*, pilots(id, name), booking_pilots(slot_no, pilot_id, pilots(id, name))")
+      .select("*, pilots(id, name), booking_pilots(slot_no, pilot_id, assigned_flight_time, pilots(id, name))")
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

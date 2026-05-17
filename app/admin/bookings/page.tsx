@@ -13,6 +13,9 @@ import {
   CreditCard,
   MessageSquare,
   RefreshCw,
+  Wand2,
+  AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -140,6 +143,12 @@ function DetailPanel({
   const [pilots, setPilots]             = useState<PilotOption[]>([]);
   const [assigning, setAssigning]       = useState<number | null>(null); // slot_no
   const [assignedPilots, setAssignedPilots] = useState(() => normalizeAssignedPilots(booking));
+  // 자동 재배정 — 모바일 어드민과 동일 동작: 기존 배정 모두 삭제 후 알고리즘 재실행.
+  // 가용 파일럿이 헤드카운트보다 적으면 같은 파일럿이 다음 슬롯에서 한 번 더 비행하는 spillover 발생.
+  const [reassigning, setReassigning]     = useState(false);
+  const [reassignBanner, setReassignBanner] = useState<
+    { kind: "ok" | "err" | "exhausted"; text: string } | null
+  >(null);
 
   // booking prop이 바뀌면 (외부에서 새로고침 후 업데이트) 동기화
   useEffect(() => {
@@ -198,6 +207,57 @@ function DetailPanel({
       }
     } finally {
       setAssigning(null);
+    }
+  }
+
+  // 자동 재배정 — booking_pilots 전체를 지우고 algorithm을 다시 돌림.
+  // 결과:
+  //  - 200 OK     → assignment_status='auto', booking_pilots=headcount개
+  //  - 409 exhausted → assignment_status='pending_admin_review', booking_pilots=0개
+  async function handleAutoReassign() {
+    if (
+      !window.confirm(
+        "기존 배정을 모두 지우고 자동 배정을 다시 돌립니다. 진행하시겠어요?",
+      )
+    ) {
+      return;
+    }
+    setReassigning(true);
+    setReassignBanner(null);
+    try {
+      const r = await fetch("/api/admin/booking-pilots/auto-assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking_id: booking.id }),
+      });
+      const j = await r.json().catch(() => ({}));
+
+      // 결과와 무관하게 booking을 새로고침해 화면을 동기화 (booking_pilots/assignment_status 반영)
+      const bookingRes = await fetch(`/api/bookings/${booking.id}`);
+      if (bookingRes.ok) onBookingUpdate(await bookingRes.json());
+
+      if (r.status === 409) {
+        setReassignBanner({
+          kind: "exhausted",
+          text: `영업종료까지 자리가 부족합니다 (${j?.shortage ?? 0}명 부족). 시간대 조정이나 일부 인원 취소를 검토해주세요.`,
+        });
+      } else if (!r.ok) {
+        setReassignBanner({ kind: "err", text: j?.error ?? "자동 재배정 실패" });
+      } else {
+        const spilloverNote = j?.spillover
+          ? " 가용 파일럿보다 인원이 많아 일부 손님이 다음 슬롯으로 이월됐습니다."
+          : "";
+        setReassignBanner({ kind: "ok", text: `자동 재배정 완료.${spilloverNote}` });
+      }
+    } catch (e: unknown) {
+      setReassignBanner({
+        kind: "err",
+        text: e instanceof Error ? e.message : "자동 재배정 실패",
+      });
+    } finally {
+      setReassigning(false);
+      // 배너는 6초 후 자동 해제 (성공·실패 공통)
+      setTimeout(() => setReassignBanner(null), 6000);
     }
   }
 
@@ -350,6 +410,49 @@ function DetailPanel({
                   </div>
                 );
               })}
+            </div>
+
+            {/* 자동 재배정 버튼 + 결과 배너 */}
+            <div className="pt-1 space-y-2">
+              <button
+                type="button"
+                onClick={handleAutoReassign}
+                disabled={reassigning}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-60"
+                style={{
+                  color: "#0D2B52",
+                  backgroundColor: "white",
+                  border: "1.5px dashed #0D2B52",
+                }}
+              >
+                <Wand2 className="w-4 h-4" />
+                {reassigning ? "자동 재배정 중…" : "자동 재배정 다시 돌리기"}
+              </button>
+              <p className="text-[11px] text-gray-400 text-center">
+                현재 배정을 모두 지우고 자동 알고리즘으로 다시 채웁니다. 가용 파일럿이 부족하면 같은 파일럿이 다음 슬롯에 한 번 더 비행할 수 있습니다.
+              </p>
+              {reassignBanner && (
+                <div
+                  className="rounded-xl p-2.5 text-xs font-medium flex items-start gap-1.5"
+                  style={{
+                    backgroundColor:
+                      reassignBanner.kind === "ok"
+                        ? "#ECFDF5"
+                        : reassignBanner.kind === "exhausted"
+                          ? "#FEF2F2"
+                          : "#FEF2F2",
+                    color:
+                      reassignBanner.kind === "ok" ? "#047857" : "#B91C1C",
+                  }}
+                >
+                  {reassignBanner.kind === "ok" ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  )}
+                  <span>{reassignBanner.text}</span>
+                </div>
+              )}
             </div>
           </div>
 

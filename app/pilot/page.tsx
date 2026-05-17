@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLogo } from "@/lib/logoStore";
 import { useRouter } from "next/navigation";
+import MyRotationCard from "@/components/pilot/MyRotationCard";
 import {
   Wind,
   CalendarDays,
@@ -1879,6 +1880,10 @@ export default function PilotPortalPage() {
 
       {/* 컨텐츠 */}
       <div className="flex-1 px-4 py-5 overflow-x-hidden overflow-y-auto min-w-0">
+        {/* 내 순번 (모든 탭 상단 공통) */}
+        <div className="mb-4">
+          <MyRotationCard />
+        </div>
         {tab === "today"      && <TodayTab />}
         {tab === "history"    && <HistoryTab />}
         {tab === "settlement" && <SettlementTab />}

@@ -40,20 +40,47 @@ export async function POST(req: NextRequest) {
     const supabase  = createServerClient() as any;
     const tenantId  = await getTenantId();
     const body      = await req.json();
-    const { booking_id, pilot_id, slot_no = 1 } = body;
+    const {
+      booking_id,
+      pilot_id,
+      slot_no = 1,
+      // 모바일 어드민 교체 흐름에서 슬롯 시각(이월 포함)을 유지하기 위해 명시적으로 받음.
+      // 미지정 시 booking.flight_time으로 폴백.
+      assigned_flight_time = null as string | null,
+    } = body;
 
     if (!booking_id || !pilot_id) {
       return NextResponse.json({ error: "booking_id와 pilot_id는 필수입니다." }, { status: 400 });
     }
 
-    // booking_pilots upsert
+    // assigned_flight_time 폴백: 미지정이면 booking.flight_time 사용
+    let timeToUse: string | null = assigned_flight_time;
+    if (!timeToUse) {
+      const { data: bk } = await supabase
+        .from("bookings")
+        .select("flight_time")
+        .eq("id", booking_id)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      timeToUse = bk?.flight_time ?? null;
+    }
+
+    // booking_pilots upsert.
+    // 마이그레이션 016에서 unique 키가 (booking_id, pilot_id, assigned_flight_time)으로 완화됨 —
+    // 같은 예약 안에서도 시각이 다르면 같은 파일럿 가능.
     const { data, error } = await supabase
       .from("booking_pilots")
       .upsert(
-        { tenant_id: tenantId, booking_id, pilot_id, slot_no },
-        { onConflict: "booking_id,pilot_id" }
+        {
+          tenant_id: tenantId,
+          booking_id,
+          pilot_id,
+          slot_no,
+          assigned_flight_time: timeToUse,
+        },
+        { onConflict: "booking_id,pilot_id,assigned_flight_time" }
       )
-      .select("id, slot_no, pilot_id, pilots(id, name)")
+      .select("id, slot_no, pilot_id, assigned_flight_time, pilots(id, name)")
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -66,6 +93,22 @@ export async function POST(req: NextRequest) {
         .eq("id", booking_id)
         .eq("tenant_id", tenantId);
     }
+
+    // ── 큐 포인터 갱신 ───────────────────────────────────────────
+    // 수동 배정(추가 또는 교체)도 큐 진행에 포함. 다음 자동 배정이 이 파일럿을
+    // 건너뛰고 진행할 수 있도록 last_assigned_pilot_id를 새로 배정된 파일럿으로 갱신.
+    // 해제(DELETE)는 음의 동작이므로 포인터 갱신하지 않음 (자동 배정이 같은 자리를 다시 채울 수 있게).
+    await supabase
+      .from("pilot_rotation_state")
+      .upsert(
+        {
+          tenant_id: tenantId,
+          last_assigned_pilot_id: pilot_id,
+          last_assigned_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "tenant_id" },
+      );
 
     return NextResponse.json(data, { status: 201 });
   } catch (e: unknown) {

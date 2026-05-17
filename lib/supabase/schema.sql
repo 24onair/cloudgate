@@ -181,13 +181,17 @@ create table if not exists pilot_schedules (
 
 -- ── 비용 기록 ─────────────────────────────────────────────────
 create table if not exists costs (
-  id          uuid primary key default uuid_generate_v4(),
-  tenant_id   uuid references tenants(id) on delete cascade,
-  date        date not null,
-  category    text not null,                 -- 연료 | 보험 | 마케팅 | 정비 | 급여 | 기타
-  description text,
-  amount      integer not null,
-  created_at  timestamptz default now()
+  id               uuid primary key default uuid_generate_v4(),
+  tenant_id        uuid references tenants(id) on delete cascade,
+  date             date not null,
+  category         text not null,                 -- 연료 | 보험 | 마케팅 | 정비 | 급여 | 기타
+  description      text,
+  amount           integer not null,
+  memo             text,
+  receipt_data_url text,
+  cost_type        text default 'variable'
+    check (cost_type in ('variable','fixed')),
+  created_at       timestamptz default now()
 );
 
 -- ── 고객 후기 ─────────────────────────────────────────────────

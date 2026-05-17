@@ -172,6 +172,9 @@ export default function SettlementDetailPage({ params }: { params: Promise<{ pil
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
+          /* 인쇄 시 admin 사이드바 및 외곽 레이아웃 제거 */
+          aside { display: none !important; }
+          main { overflow: visible !important; }
         }
       `}</style>
 

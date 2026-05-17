@@ -85,29 +85,27 @@ export async function addCost(entry: Omit<CostEntry, "id" | "createdAt">): Promi
     createdAt: new Date().toISOString(),
   };
 
-  try {
-    const res = await fetch("/api/costs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) {
-      const row = await res.json();
-      newEntry = {
-        id: row.id ?? newEntry.id,
-        date: row.date ?? entry.date,
-        category: row.category ?? entry.category,
-        costType: row.cost_type ?? entry.costType ?? "variable",
-        name: row.description ?? entry.name,
-        amount: row.amount ?? entry.amount,
-        memo: row.memo ?? entry.memo ?? "",
-        receiptDataUrl: null,
-        createdAt: row.created_at ?? newEntry.createdAt,
-      };
-    }
-  } catch {
-    // 오류 시 로컬 생성 ID 사용
+  const res = await fetch("/api/costs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error ?? `변동비 저장 실패 (${res.status})`);
   }
+  const row = await res.json();
+  newEntry = {
+    id: row.id ?? newEntry.id,
+    date: row.date ?? entry.date,
+    category: row.category ?? entry.category,
+    costType: row.cost_type ?? entry.costType ?? "variable",
+    name: row.description ?? entry.name,
+    amount: row.amount ?? entry.amount,
+    memo: row.memo ?? entry.memo ?? "",
+    receiptDataUrl: null,
+    createdAt: row.created_at ?? newEntry.createdAt,
+  };
 
   if (_costCache !== null) {
     _costCache = [newEntry, ..._costCache];

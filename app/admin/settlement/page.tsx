@@ -18,7 +18,6 @@ import {
   RefreshCw,
   CalendarClock,
   ChevronRight,
-  RotateCcw,
 } from "lucide-react";
 import {
   useSettlement,
@@ -790,30 +789,15 @@ export default function SettlementPage() {
                   {!isMonthMode ? (
                     <ChevronRight className="w-4 h-4 text-gray-300" />
                   ) : isPaid ? (
-                    <>
-                      <span className="text-[10px] px-2 py-1 rounded font-bold" style={{ backgroundColor: "#DCFCE7", color: "#15803D" }}>
-                        ✓ 지급완료
-                      </span>
-                      <button onClick={() => handleSingleAction(pilot, "revert")} disabled={isBusy}
-                        className="p-1 rounded hover:bg-gray-100 disabled:opacity-50" title="되돌리기">
-                        <RotateCcw className="w-3.5 h-3.5 text-gray-400" />
-                      </button>
-                    </>
+                    <span className="text-[10px] px-2 py-1 rounded font-bold" style={{ backgroundColor: "#DCFCE7", color: "#15803D" }}>
+                      ✓ 지급완료
+                    </span>
                   ) : isConfirmed ? (
-                    <>
-                      <span className="text-[10px] px-2 py-1 rounded font-bold" style={{ backgroundColor: "#DBEAFE", color: "#1D4ED8" }}>
-                        확정
-                      </span>
-                      <button onClick={() => handleSingleAction(pilot, "pay")} disabled={isBusy}
-                        className="px-2 py-1 rounded text-[10px] font-bold text-white disabled:opacity-50"
-                        style={{ backgroundColor: "#15803D" }}>
-                        {isBusy ? "..." : "지급"}
-                      </button>
-                      <button onClick={() => handleSingleAction(pilot, "revert")} disabled={isBusy}
-                        className="p-1 rounded hover:bg-gray-100 disabled:opacity-50" title="확정 취소">
-                        <RotateCcw className="w-3.5 h-3.5 text-gray-400" />
-                      </button>
-                    </>
+                    <button onClick={() => handleSingleAction(pilot, "pay")} disabled={isBusy}
+                      className="px-2.5 py-1 rounded text-[10px] font-bold text-white disabled:opacity-50"
+                      style={{ backgroundColor: "#15803D" }}>
+                      {isBusy ? "..." : "지급"}
+                    </button>
                   ) : (
                     <button onClick={() => handleSingleAction(pilot, "confirm")} disabled={isBusy}
                       className="px-2.5 py-1 rounded text-[10px] font-bold text-white disabled:opacity-50"

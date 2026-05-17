@@ -25,13 +25,28 @@ function isPilotPath(p: string) {
   return p === "/pilot" || p.startsWith("/pilot/") || p.startsWith("/api/pilot/") || p === "/api/pilot";
 }
 
-function unauthorized(req: NextRequest, scope: "admin" | "pilot", isApi: boolean): NextResponse {
+function unauthorized(
+  req: NextRequest,
+  scope: "admin" | "pilot",
+  isApi: boolean,
+  originalPath?: string,
+): NextResponse {
   if (isApi) {
     const res = NextResponse.json({ error: "미인증" }, { status: 401 });
     res.cookies.set(scope === "admin" ? ADMIN_COOKIE : PILOT_COOKIE, "", clearCookieOptions());
     return res;
   }
   const loginUrl = new URL(scope === "admin" ? ADMIN_LOGIN_PAGE : PILOT_LOGIN_PAGE, req.url);
+  // 로그인 후 원래 가려던 경로로 돌려보내기 위한 next 쿼리 보존.
+  // (예: 모바일에서 /admin/m 진입 시 로그인 후 다시 /admin/m으로 복귀)
+  // 같은 로그인 페이지를 next로 넣으면 무한 루프이므로 제외.
+  if (
+    originalPath &&
+    originalPath !== ADMIN_LOGIN_PAGE &&
+    originalPath !== PILOT_LOGIN_PAGE
+  ) {
+    loginUrl.searchParams.set("next", originalPath);
+  }
   const res = NextResponse.redirect(loginUrl);
   res.cookies.set(scope === "admin" ? ADMIN_COOKIE : PILOT_COOKIE, "", clearCookieOptions());
   return res;
@@ -69,7 +84,7 @@ export async function proxy(req: NextRequest) {
     const isApi = pathname.startsWith("/api/");
     const token = req.cookies.get(ADMIN_COOKIE)?.value ?? "";
     const payload = token ? await verifySession(token, "admin", secret) : null;
-    if (!payload) return unauthorized(req, "admin", isApi);
+    if (!payload) return unauthorized(req, "admin", isApi, pathname);
     return passThroughWithPathname(req, pathname);
   }
 
@@ -81,7 +96,7 @@ export async function proxy(req: NextRequest) {
     const isApi = pathname.startsWith("/api/");
     const token = req.cookies.get(PILOT_COOKIE)?.value ?? "";
     const payload = token ? await verifySession(token, "pilot", secret) : null;
-    if (!payload) return unauthorized(req, "pilot", isApi);
+    if (!payload) return unauthorized(req, "pilot", isApi, pathname);
     return passThroughWithPathname(req, pathname);
   }
 

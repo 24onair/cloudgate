@@ -1,11 +1,37 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { Wind, Lock, Eye, EyeOff } from "lucide-react";
 
+/**
+ * 로그인 후 이동 경로 결정 로직.
+ *  1) URL의 ?next= 가 같은 사이트 내 어드민 경로이면 그쪽으로 (proxy가 원래 경로 보존해 보낸 케이스)
+ *  2) 아니면 user-agent + viewport 폭으로 모바일/PC 자동 분기:
+ *     - 휴대폰(iPhone·Android 등) 또는 폭 < 768px → /admin/m
+ *     - 그 외 → /admin
+ *
+ * 오픈 리다이렉트 방지: next는 반드시 "/admin" 으로 시작해야 하고
+ * "//" 또는 "/\" 으로 시작하면 외부로 리다이렉트 가능하니 거부한다.
+ */
+function safeNextPath(raw: string | null): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith("/")) return null;
+  if (raw.startsWith("//") || raw.startsWith("/\\")) return null;
+  if (raw !== "/admin" && !raw.startsWith("/admin/")) return null;
+  return raw;
+}
+
+function pickPostLoginDestination(): string {
+  if (typeof window === "undefined") return "/admin";
+  const fromNext = safeNextPath(new URLSearchParams(window.location.search).get("next"));
+  if (fromNext) return fromNext;
+  const ua = navigator.userAgent || "";
+  const isMobileUA = /iPhone|iPod|Android.+Mobile/i.test(ua);
+  const isNarrow = window.innerWidth > 0 && window.innerWidth < 768;
+  return isMobileUA || isNarrow ? "/admin/m" : "/admin";
+}
+
 export default function AdminLoginPage() {
-  const router = useRouter();
   const [password,    setPassword]    = useState("");
   const [showPw,      setShowPw]      = useState(false);
   const [error,       setError]       = useState("");
@@ -22,7 +48,7 @@ export default function AdminLoginPage() {
         body: JSON.stringify({ password }),
       });
       if (res.ok) {
-        window.location.href = "/admin";
+        window.location.href = pickPostLoginDestination();
       } else {
         const data = await res.json().catch(() => ({}));
         setError(data.error ?? "로그인에 실패했습니다.");

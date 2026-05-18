@@ -20,8 +20,8 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Info,
   MessageSquare,
-  Plane,
   RefreshCw,
   Save,
   Trash2,
@@ -93,21 +93,11 @@ interface FormState {
   // 결제링크 SMS는 전화 예약에서 항상 발송(예약금 필수)이라 토글 없음.
 }
 
-interface AssignmentRow {
-  pilot_id: string;
-  slot_no: number;
-  assigned_flight_time: string;
-}
-
+// 현장 도착 모델: 예약 단계에서는 파일럿을 배정하지 않으므로 결과 페이로드는
+// 예약 식별자만 보관한다. (자동 배정 결과 표시는 today 보드 [현장 도착] 액션으로 이동)
 interface ResultPayload {
   booking_no: string;
   booking_id: string;
-  assignments?: AssignmentRow[];
-  pilotNames?: Record<string, string>;
-  spillover?: boolean;
-  exhausted?: boolean;
-  exhaustedShortage?: number;
-  requestedTime?: string;
 }
 
 const DRAFT_SLOT = "new_booking_v1";
@@ -380,26 +370,12 @@ export default function NewMobileBookingPage() {
     setRestorePrompt(null);
   }
 
-  async function fetchPilotNames(ids: string[]): Promise<Record<string, string>> {
-    if (ids.length === 0) return {};
-    try {
-      const res = await fetch("/api/pilots", { cache: "no-store" });
-      if (!res.ok) return {};
-      const all = (await res.json()) as Array<{ id: string; name: string }>;
-      const map: Record<string, string> = {};
-      for (const p of all) map[p.id] = p.name;
-      return map;
-    } catch {
-      return {};
-    }
-  }
-
   async function handleConfirm() {
     if (!isComplete || !selectedProduct) return;
     setSubmitting(true);
     setSubmitError("");
     try {
-      // 1) 예약 생성
+      // 예약만 생성 — 파일럿 배정은 손님 현장 도착 시 today 보드에서 진행.
       const opts = selectedOptions.map((o) => ({ name: o.name, price: o.price }));
       const createRes = await fetch("/api/bookings", {
         method: "POST",
@@ -426,48 +402,7 @@ export default function NewMobileBookingPage() {
         throw new Error(err.error ?? "예약 저장 실패");
       }
       const created = await createRes.json();
-
-      // 2) 자동 배정 호출
-      const assignRes = await fetch("/api/admin/booking-pilots/auto-assign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ booking_id: created.id }),
-      });
-      const assignJson = await assignRes.json().catch(() => ({}));
-
-      if (assignRes.status === 409) {
-        // exhausted — 수동 배정 필요
-        setResult({
-          booking_no: created.booking_no,
-          booking_id: created.id,
-          exhausted: true,
-          exhaustedShortage: assignJson?.shortage ?? 0,
-        });
-      } else if (!assignRes.ok) {
-        // 알 수 없는 배정 에러 — 예약은 만들어졌으니 결과 표시
-        setResult({
-          booking_no: created.booking_no,
-          booking_id: created.id,
-          exhausted: false,
-          spillover: false,
-          assignments: [],
-          pilotNames: {},
-        });
-        setSubmitError(`자동 배정 실패: ${assignJson?.error ?? "알 수 없는 오류"}`);
-      } else {
-        const assignments: AssignmentRow[] = assignJson?.assignments ?? [];
-        const pilotIds = Array.from(new Set(assignments.map((a) => a.pilot_id)));
-        const pilotNames = await fetchPilotNames(pilotIds);
-        setResult({
-          booking_no: created.booking_no,
-          booking_id: created.id,
-          assignments,
-          pilotNames,
-          spillover: !!assignJson?.spillover,
-          requestedTime: assignJson?.requestedTime,
-          exhausted: false,
-        });
-      }
+      setResult({ booking_no: created.booking_no, booking_id: created.id });
       clearDraft(DRAFT_SLOT);
     } catch (e: unknown) {
       setSubmitError(e instanceof Error ? e.message : "오류가 발생했습니다.");
@@ -986,7 +921,7 @@ export default function NewMobileBookingPage() {
         onClose={() => {
           /* close=새 예약 — 명시적 시작 버튼만 허용 */
         }}
-        title={result?.exhausted ? "예약은 생성되었지만 수동 배정 필요" : "예약 확정"}
+        title="예약접수 완료"
       >
         {result && (
           <ResultBody
@@ -1036,40 +971,6 @@ function ResultBody({
   send_kakao: boolean;
   onStartNew: () => void;
 }) {
-  if (result.exhausted) {
-    return (
-      <div>
-        <div
-          className="rounded-xl p-3 flex items-start gap-2"
-          style={{ backgroundColor: "#FEF2F2" }}
-        >
-          <AlertTriangle size={18} style={{ color: "#B91C1C" }} className="shrink-0 mt-0.5" />
-          <div className="text-sm" style={{ color: "#B91C1C" }}>
-            영업종료까지 자리가 부족합니다 ({result.exhaustedShortage}명 부족).
-            <br />
-            "오늘 배정 확인" 화면에서 수동 처리 또는 다른 시간대 재예약을 해주세요.
-          </div>
-        </div>
-        <div className="mt-3 text-sm" style={{ color: "#4d4f46" }}>
-          예약번호 <span className="font-mono font-bold">{result.booking_no}</span> 는 정상 생성되었습니다.
-        </div>
-        <div className="mt-5 flex gap-2">
-          <button
-            type="button"
-            onClick={onStartNew}
-            className="flex-1 h-12 rounded-xl font-bold text-white"
-            style={{ backgroundColor: "#0D2B52" }}
-          >
-            새 예약 받기
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const sorted = [...(result.assignments ?? [])].sort((a, b) => a.slot_no - b.slot_no);
-  const isSpillover = !!result.spillover;
-
   return (
     <div>
       {/* 성공 헤더 */}
@@ -1080,66 +981,21 @@ function ResultBody({
         </div>
       </div>
 
-      {isSpillover && (
-        <div
-          className="rounded-xl p-2 mb-3 flex items-start gap-2"
-          style={{ backgroundColor: "#FFFBEB" }}
-        >
-          <AlertTriangle size={16} style={{ color: "#B45309" }} className="shrink-0 mt-0.5" />
-          <div className="text-xs" style={{ color: "#92400E" }}>
-            요청 시간 {result.requestedTime}에 자리가 부족해 일부 인원이 다음 시간대로 이월되었습니다.
-            고객에게 안내가 필요합니다.
-          </div>
+      {/* 현장 도착 모델 안내 */}
+      <div
+        className="rounded-xl p-3 mb-3 flex items-start gap-2"
+        style={{ backgroundColor: "#EFF6FF" }}
+      >
+        <Info size={16} style={{ color: "#1D4ED8" }} className="shrink-0 mt-0.5" />
+        <div className="text-xs leading-relaxed" style={{ color: "#1D4ED8" }}>
+          파일럿 배정은 손님이 현장 도착한 시점에 진행됩니다.
+          <br />
+          오늘 배정 보드에서 해당 예약의 <b>[현장 도착]</b> 버튼을 눌러주세요.
         </div>
-      )}
-
-      <div className="text-xs font-semibold mb-1" style={{ color: "#65675e" }}>
-        배정된 파일럿
-      </div>
-      <div className="space-y-1.5">
-        {sorted.map((a) => {
-          const spilled = a.assigned_flight_time !== result.requestedTime;
-          return (
-            <div
-              key={a.slot_no}
-              className="flex items-center justify-between p-2.5 rounded-lg"
-              style={{
-                backgroundColor: spilled ? "#FFFBEB" : "#F9FAFB",
-                border: `1px solid ${spilled ? "#FCD34D" : "#E5E7EB"}`,
-              }}
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                  style={{ backgroundColor: "#0D2B52", color: "white" }}
-                >
-                  {a.slot_no}
-                </div>
-                <div className="text-sm font-semibold truncate" style={{ color: "#0D2B52" }}>
-                  {result.pilotNames?.[a.pilot_id] ?? "파일럿"}
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <Plane size={14} style={{ color: spilled ? "#B45309" : "#65675e" }} />
-                <span
-                  className="text-sm font-bold"
-                  style={{ color: spilled ? "#B45309" : "#0D2B52" }}
-                >
-                  {a.assigned_flight_time}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-        {sorted.length === 0 && (
-          <div className="text-xs" style={{ color: "#9ea096" }}>
-            배정 결과 없음
-          </div>
-        )}
       </div>
 
-      {/* 상태 라벨 */}
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      {/* 알림 발송 라벨 */}
+      <div className="flex flex-wrap gap-1.5">
         <StatusChip on label="✓ 결제 링크 SMS 발송 예정" />
         <StatusChip
           on={send_kakao}
@@ -1148,7 +1004,7 @@ function ResultBody({
       </div>
 
       <div className="text-[11px] mt-2" style={{ color: "#9ea096" }}>
-        {customer_name ? `고객 ${customer_name}님 ` : ""}예약이 완료되었습니다. 알림 발송 인프라 연동 후 실제 전송됩니다.
+        {customer_name ? `고객 ${customer_name}님 ` : ""}예약이 접수되었습니다. 알림 발송 인프라 연동 후 실제 전송됩니다.
       </div>
 
       <div className="mt-5 flex gap-2">

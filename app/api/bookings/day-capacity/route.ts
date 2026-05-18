@@ -5,22 +5,28 @@
  * 고객 예약 페이지·어드민 신규 예약 페이지가 슬롯 단위가 아닌
  * "그날 전체 가용 비행 수"를 표시하기 위한 엔드포인트.
  *
- * 정책:
- *  - 한 파일럿은 같은 슬롯에서 1회만 비행 (assigner의 assignedAtCursor 제약)
- *  - 같은 파일럿이 다른 슬롯에 또 비행 가능 (슬롯 간격 = 이동 시간으로 흡수)
- *  → 그날 가능한 비행 수의 상한 = (활성 파일럿 - 휴무자) × 영업시간 슬롯 수
+ * 정책 (현장 도착 시 파일럿 배정 모델):
+ *  - 예약 시점에는 파일럿을 배정하지 않으므로 booking_pilots row가 없음
+ *  - 슬롯 점유는 bookings.flight_time + headcount 합으로 계산
+ *  - 한 슬롯의 capacity = 그날 활성 파일럿 수 (휴무 제외)
+ *  - 그날 전체 capacity = active_pilots × 영업시간 슬롯 수
  *
  * 응답:
  *  - active_pilots: 그날 활성 파일럿 수 (휴무·기타 제외)
  *  - slot_count   : site_settings.slot_config 기반 영업시간 슬롯 개수
- *  - total        : 그날 전체 capacity = active_pilots × slot_count
- *  - booked       : 그날 이미 배정된 booking_pilots row 수 (cancelled 예약은 제외)
+ *  - slots[]      : 슬롯별 { time, occupied, free, exhausted }
+ *                   occupied = 그 시각 예약된 headcount 합
+ *                   free     = active_pilots - occupied (음수 방지)
+ *  - total        : active_pilots × slot_count
+ *  - booked       : 그날 cancelled 제외 booking의 headcount 합
  *  - remaining    : total - booked (음수 방지)
  *  - exhausted    : remaining === 0
  *
- * 이전 구현은 total을 단순 활성 파일럿 수로 잡아 슬롯 개념을 무시했기 때문에,
- * 활성 5명 + booked headcount ≥ 5 케이스에서 다른 슬롯이 텅 비어 있어도
- * "자리 마감"으로 잘못 표시되는 버그가 있었다.
+ * 이력:
+ *  - v1: total = 활성 파일럿 수 (슬롯 개념 무시 — 단일 단체에서 즉시 마감)
+ *  - v2: total = active × slot_count, occupied = booking_pilots row 수
+ *  - v3 (현): occupied = bookings.headcount 합 — 예약 시점에 파일럿 배정을
+ *           하지 않으므로 booking_pilots는 점유 척도로 못 씀.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
@@ -78,7 +84,7 @@ export async function GET(req: NextRequest) {
       { data: pilots },
       { data: schedules },
       { data: slotCfgRow },
-      { data: bpRows },
+      { data: bkRows },
     ] = await Promise.all([
       supabase
         .from("pilots")
@@ -96,14 +102,14 @@ export async function GET(req: NextRequest) {
         .eq("tenant_id", tenantId)
         .eq("key", "slot_config")
         .maybeSingle(),
-      // 그날 booking_pilots row (cancelled booking은 제외).
-      // booking_pilots는 booking 취소 시 자동으로 정리되지 않을 수 있어 join으로 보강.
+      // 그날 cancelled 제외 booking — 점유 척도로 flight_time + headcount 사용.
+      // 파일럿 배정 자체는 현장 도착 시점에 일어나므로 booking_pilots는 못 씀.
       supabase
-        .from("booking_pilots")
-        .select("id, assigned_flight_time, bookings!inner(status, flight_date)")
+        .from("bookings")
+        .select("flight_time, headcount, status")
         .eq("tenant_id", tenantId)
-        .eq("bookings.flight_date", date)
-        .neq("bookings.status", "cancelled"),
+        .eq("flight_date", date)
+        .neq("status", "cancelled"),
     ]);
 
     const unavailable = new Set<string>();
@@ -118,15 +124,22 @@ export async function GET(req: NextRequest) {
     const slotTimesList = generateSlotTimes(cfg);
     const slotCount = slotTimesList.length;
 
-    // 슬롯별 점유 집계 — assigned_flight_time을 "HH:MM"으로 정규화 후 카운트.
-    // 슬롯 capacity = activePilots (그 시각에 한 파일럿이 두 손님을 못 태움).
+    // 슬롯별 점유 집계 — booking.flight_time을 "HH:MM"으로 정규화한 뒤 그 슬롯에
+    // headcount를 더함. 슬롯 capacity = activePilots (그 시각 한 파일럿 1손님).
+    // 슬롯에 정의되지 않은 시각의 예약은 occupied 집계에서 제외 (slot_config 정정 책임).
     const slotOccupied: Record<string, number> = {};
     for (const t of slotTimesList) slotOccupied[t] = 0;
-    for (const row of (bpRows ?? []) as Array<{ assigned_flight_time: string | null }>) {
-      const raw = row.assigned_flight_time;
+    let booked = 0;
+    for (const row of (bkRows ?? []) as Array<{
+      flight_time: string | null;
+      headcount: number | null;
+    }>) {
+      const head = Number(row.headcount) || 0;
+      booked += head;
+      const raw = row.flight_time;
       if (!raw) continue;
       const key = String(raw).slice(0, 5); // "HH:MM:SS" or "HH:MM" → "HH:MM"
-      if (key in slotOccupied) slotOccupied[key] += 1;
+      if (key in slotOccupied) slotOccupied[key] += head;
     }
     const slots = slotTimesList.map((time) => {
       const occupied = slotOccupied[time];
@@ -135,7 +148,6 @@ export async function GET(req: NextRequest) {
     });
 
     const total = activePilots * slotCount;
-    const booked = (bpRows ?? []).length;
     const remaining = Math.max(0, total - booked);
 
     return NextResponse.json({

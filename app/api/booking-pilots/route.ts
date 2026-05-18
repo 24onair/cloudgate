@@ -53,16 +53,53 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "booking_id와 pilot_id는 필수입니다." }, { status: 400 });
     }
 
-    // assigned_flight_time 폴백: 미지정이면 booking.flight_time 사용
+    // assigned_flight_time 폴백 + 같은 booking의 flight_date도 함께 로드.
+    // flight_date는 슬롯 충돌 검증에 사용.
     let timeToUse: string | null = assigned_flight_time;
-    if (!timeToUse) {
+    let flightDate: string | null = null;
+    {
       const { data: bk } = await supabase
         .from("bookings")
-        .select("flight_time")
+        .select("flight_time, flight_date")
         .eq("id", booking_id)
         .eq("tenant_id", tenantId)
         .maybeSingle();
-      timeToUse = bk?.flight_time ?? null;
+      flightDate = bk?.flight_date ?? null;
+      if (!timeToUse) timeToUse = bk?.flight_time ?? null;
+    }
+
+    // ── 슬롯 충돌 검증 ──────────────────────────────────────────────
+    // DB unique 키는 (booking_id, pilot_id, assigned_flight_time)이라
+    // 다른 booking이면 동일 시각·동일 파일럿 중복이 막히지 않는다.
+    // 자동 배정 알고리즘은 메모리에서 다른 예약 점유를 보고 차단하지만,
+    // 수동 배정·교체 경로는 그 검증이 없어 동일 파일럿이 같은 시각에
+    // 두 예약에 들어갈 수 있다. 여기서 막아준다.
+    if (timeToUse && flightDate) {
+      const { data: conflict } = await supabase
+        .from("booking_pilots")
+        .select(
+          "id, booking_id, bookings!inner(booking_no, customer_name, flight_date)",
+        )
+        .eq("tenant_id", tenantId)
+        .eq("pilot_id", pilot_id)
+        .eq("assigned_flight_time", timeToUse)
+        .eq("bookings.flight_date", flightDate)
+        .neq("booking_id", booking_id)
+        .neq("bookings.status", "cancelled");
+      if (Array.isArray(conflict) && conflict.length > 0) {
+        const c = conflict[0] as {
+          bookings: { booking_no: string | null; customer_name: string | null } | null;
+        };
+        const refNo = c.bookings?.booking_no ?? "다른 예약";
+        const refName = c.bookings?.customer_name ?? "";
+        return NextResponse.json(
+          {
+            error: `이 파일럿은 ${flightDate} ${String(timeToUse).slice(0, 5)}에 이미 ${refName}(${refNo}) 예약에 배정되어 있습니다.`,
+            conflict_booking_id: (c as { booking_id?: string }).booking_id ?? null,
+          },
+          { status: 409 },
+        );
+      }
     }
 
     // booking_pilots upsert.

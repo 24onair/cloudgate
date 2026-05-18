@@ -16,6 +16,7 @@ import {
   Wand2,
   AlertTriangle,
   CheckCircle2,
+  RotateCcw,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -526,16 +527,54 @@ function DetailPanel({
             </div>
           )}
 
-          {/* Cancel */}
-          {booking.status !== "cancelled" && booking.status !== "completed" && (
+          {/* Cancel / Restore */}
+          {booking.status === "cancelled" ? (
+            // 취소된 예약 — 복원 버튼 (예약접수 상태로 되돌림)
             <button
-              onClick={() => onStatusChange(booking.id, "cancelled")}
+              type="button"
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    `이 예약을 다시 활성화하시겠습니까?\n\n· 손님: ${booking.customer_name} (${booking.headcount}인)\n· 일정: ${booking.flight_date} ${booking.flight_time}\n· 예약번호: ${booking.booking_no}\n\n복원 후 상태는 "예약접수"가 됩니다.`,
+                  )
+                ) {
+                  return;
+                }
+                onStatusChange(booking.id, "pending");
+              }}
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-sm font-semibold transition-colors"
+              style={{
+                color: "#1D4ED8",
+                backgroundColor: "#EFF6FF",
+                border: "1px solid #BFDBFE",
+              }}
+            >
+              <RotateCcw className="w-4 h-4" />
+              취소 예약 복원
+            </button>
+          ) : booking.status !== "completed" ? (
+            // 활성 예약 — 취소 버튼 (확인 모달로 실수 방지)
+            <button
+              type="button"
+              onClick={() => {
+                const confirmMsg = [
+                  "정말 이 예약을 취소하시겠습니까?",
+                  "",
+                  `· 손님: ${booking.customer_name} (${booking.headcount}인)`,
+                  `· 일정: ${booking.flight_date} ${booking.flight_time}`,
+                  `· 예약번호: ${booking.booking_no}`,
+                  "",
+                  "취소 후에도 우측 패널의 [취소 예약 복원] 버튼으로 되돌릴 수 있습니다.",
+                ].join("\n");
+                if (!window.confirm(confirmMsg)) return;
+                onStatusChange(booking.id, "cancelled");
+              }}
               className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-red-200 text-sm text-red-500 hover:bg-red-50 transition-colors"
             >
               <XCircle className="w-4 h-4" />
               예약 취소
             </button>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

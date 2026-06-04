@@ -83,11 +83,20 @@ function formatPrice(n: number) {
   return (n ?? 0).toLocaleString("ko-KR") + "원";
 }
 
-// 상태 chip 정보
+// 배정(assignment_status) chip 정보
 const STATUS_INFO: Record<string, { label: string; bg: string; fg: string; Icon: typeof CheckCircle2 }> = {
   auto:                    { label: "자동 배정", bg: "#ECFDF5", fg: "#047857", Icon: CheckCircle2 },
   manual:                  { label: "수동 조정", bg: "#FFF7ED", fg: "#C2410C", Icon: Wrench },
   pending_admin_review:    { label: "수동 배정 필요", bg: "#FEE2E2", fg: "#B91C1C", Icon: AlertTriangle },
+};
+
+// 예약 생명주기(booking.status) chip 정보
+const BOOKING_STATUS_INFO: Record<string, { label: string; bg: string; fg: string }> = {
+  pending:   { label: "예약접수", bg: "#FEF3C7", fg: "#B45309" },
+  confirmed: { label: "예약확정", bg: "#DBEAFE", fg: "#1D4ED8" },
+  flying:    { label: "비행중",   bg: "#FFF7ED", fg: "#C2410C" },
+  completed: { label: "비행완료", bg: "#DCFCE7", fg: "#15803D" },
+  cancelled: { label: "취소",     bg: "#F3F4F6", fg: "#6B7280" },
 };
 
 // ─── 페이지 ───────────────────────────────────────────────────────
@@ -283,6 +292,72 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  // ── 예약 확정 / 접수로 되돌리기 (입금 확인 후 상태 전환) ──────────
+  async function handleConfirmBooking() {
+    if (!booking) return;
+    if (
+      !confirm(
+        `예약금 입금이 확인되었습니까?\n\n· ${booking.customer_name} (${booking.headcount}명)\n· 예약금 ${formatPrice(booking.deposit_amount)}\n\n확인 시 상태가 "예약확정"으로 변경됩니다.`,
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/bookings/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "confirmed" }),
+      });
+      if (!r.ok) throw new Error("예약 확정 실패");
+
+      // 확정 시 파일럿 자동 배정 (아직 배정 안 된 경우만 — 수동 배정은 유지)
+      const alreadyAssigned = (booking.booking_pilots?.length ?? 0) > 0;
+      if (!alreadyAssigned) {
+        const ar = await fetch(`/api/admin/booking-pilots/auto-assign`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ booking_id: id }),
+        });
+        const aj = await ar.json().catch(() => ({}));
+        await load(false);
+        if (ar.status === 409) {
+          showErr(`예약은 확정됐지만 자리가 부족해 자동 배정 실패 (${aj?.shortage ?? 0}명 부족). 수동 배정이 필요합니다.`);
+        } else if (!ar.ok) {
+          showErr(`예약 확정됨. 자동 배정 오류: ${aj?.error ?? "실패"}`);
+        } else {
+          showOk(`예약 확정 + 파일럿 ${aj?.assignments?.length ?? booking.headcount}명 배정 완료`);
+        }
+      } else {
+        await load(false);
+        showOk("예약이 확정되었습니다 (기존 배정 유지)");
+      }
+    } catch (e: unknown) {
+      showErr(e instanceof Error ? e.message : "예약 확정 실패");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRevertToReceived() {
+    if (!booking) return;
+    if (!confirm('예약을 "예약접수" 상태로 되돌리시겠어요?')) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/bookings/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "pending" }),
+      });
+      if (!r.ok) throw new Error("되돌리기 실패");
+      await load(false);
+      showOk("예약접수 상태로 되돌렸습니다");
+    } catch (e: unknown) {
+      showErr(e instanceof Error ? e.message : "되돌리기 실패");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // ── 파생: 교체 시트용 가용 파일럿 ─────────────────────────────────
   const candidates = useMemo(() => {
     if (!swapTarget || !booking) return [];
@@ -355,6 +430,7 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
   const statusKey = booking.assignment_status ?? "auto";
   const statusInfo = STATUS_INFO[statusKey] ?? STATUS_INFO.auto;
   const StatusIcon = statusInfo.Icon;
+  const bStatus = BOOKING_STATUS_INFO[booking.status] ?? BOOKING_STATUS_INFO.pending;
 
   return (
     <div className="flex flex-col w-full flex-1 pb-8">
@@ -412,13 +488,21 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
                 {booking.product_name} × {booking.headcount}명
               </div>
             </div>
-            <span
-              className="px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-0.5 shrink-0"
-              style={{ backgroundColor: statusInfo.bg, color: statusInfo.fg }}
-            >
-              <StatusIcon size={10} />
-              {statusInfo.label}
-            </span>
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <span
+                className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                style={{ backgroundColor: bStatus.bg, color: bStatus.fg }}
+              >
+                {bStatus.label}
+              </span>
+              <span
+                className="px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-0.5"
+                style={{ backgroundColor: statusInfo.bg, color: statusInfo.fg }}
+              >
+                <StatusIcon size={10} />
+                {statusInfo.label}
+              </span>
+            </div>
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
@@ -585,6 +669,75 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
         </button>
         <div className="text-[11px] mt-2 text-center" style={{ color: "#9ea096" }}>
           현재 배정을 모두 지우고 자동 알고리즘으로 다시 채웁니다.
+        </div>
+      </section>
+
+      {/* 예약 확정 (입금 확인 후 상태 전환) — 예약 내용 제일 아래 */}
+      <section className="px-5 mt-6">
+        <div className="text-sm font-bold mb-2" style={{ color: "#0D2B52" }}>
+          예약 상태
+        </div>
+        <div className="rounded-2xl bg-white p-4" style={{ border: "1px solid #E5E7EB" }}>
+          <div className="flex items-center justify-between mb-3">
+            <span
+              className="px-2.5 py-1 rounded-full text-xs font-bold"
+              style={{ backgroundColor: bStatus.bg, color: bStatus.fg }}
+            >
+              {bStatus.label}
+            </span>
+            <span className="text-xs" style={{ color: "#65675e" }}>
+              예약금 {formatPrice(booking.deposit_amount)}
+            </span>
+          </div>
+
+          {booking.status === "pending" && (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={handleConfirmBooking}
+                className="w-full h-12 rounded-xl text-base font-bold text-white flex items-center justify-center gap-2 active:scale-[0.99] disabled:opacity-50"
+                style={{ backgroundColor: "#15803D" }}
+              >
+                <CheckCircle2 size={18} /> 예약 확정 (입금 확인)
+              </button>
+              <div className="text-[11px] mt-2 text-center" style={{ color: "#9ea096" }}>
+                예약금 입금이 확인되면 눌러 예약을 확정하세요.
+              </div>
+            </>
+          )}
+
+          {booking.status === "confirmed" && (
+            <>
+              <div
+                className="w-full h-12 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                style={{ backgroundColor: "#DBEAFE", color: "#1D4ED8" }}
+              >
+                <CheckCircle2 size={18} /> 예약 확정됨
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={handleRevertToReceived}
+                className="w-full mt-2 text-xs underline disabled:opacity-50"
+                style={{ color: "#9ea096" }}
+              >
+                접수 상태로 되돌리기
+              </button>
+            </>
+          )}
+
+          {(booking.status === "flying" || booking.status === "completed") && (
+            <div className="text-xs text-center" style={{ color: "#65675e" }}>
+              현재 &lsquo;{bStatus.label}&rsquo; 단계입니다.
+            </div>
+          )}
+
+          {booking.status === "cancelled" && (
+            <div className="text-xs text-center" style={{ color: "#B91C1C" }}>
+              취소된 예약입니다.
+            </div>
+          )}
         </div>
       </section>
 

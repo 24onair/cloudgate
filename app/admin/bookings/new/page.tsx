@@ -621,7 +621,7 @@ function ConfirmStep({
           className="flex-1 py-3.5 rounded-xl font-bold text-white disabled:opacity-60"
           style={{ backgroundColor: "#FF8A00" }}
         >
-          {saving ? "저장 중..." : "예약 확정"}
+          {saving ? "저장 중..." : "예약 접수"}
         </button>
       </div>
     </div>
@@ -647,8 +647,8 @@ function DoneStep({ bookingNo, form, product, onReset }: DoneStepProps) {
       <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: "#F4F8FF" }}>
         <CheckCircle2 className="w-10 h-10" style={{ color: "#2A7AE2" }} />
       </div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">예약 확정 완료!</h2>
-      <p className="text-gray-500 mb-8">예약이 저장되었습니다.</p>
+      <h2 className="text-2xl font-bold text-gray-900 mb-2">예약 접수 완료!</h2>
+      <p className="text-gray-500 mb-8">예약금 입금 확인 후 [예약 확정] 처리하세요.</p>
 
       <div className="rounded-2xl p-5 mb-6 text-left" style={{ backgroundColor: "#F4F8FF" }}>
         <p className="text-xs text-gray-400 mb-1">예약 번호</p>

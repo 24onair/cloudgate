@@ -51,8 +51,8 @@ interface ApiBooking {
 // ─── Status Config ────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<BookingStatus, { label: string; color: string; bg: string; dot: string }> = {
-  pending:   { label: "대기",       color: "#D97706", bg: "#FEF3C7", dot: "#F59E0B" },
-  confirmed: { label: "파일럿배정", color: "#1D4ED8", bg: "#DBEAFE", dot: "#3B82F6" },
+  pending:   { label: "예약접수",   color: "#D97706", bg: "#FEF3C7", dot: "#F59E0B" },
+  confirmed: { label: "예약확정",   color: "#1D4ED8", bg: "#DBEAFE", dot: "#3B82F6" },
   flying:    { label: "비행",       color: "#C2410C", bg: "#FFF7ED", dot: "#FF8A00" },
   completed: { label: "비행완료",   color: "#15803D", bg: "#DCFCE7", dot: "#22C55E" },
   cancelled: { label: "취소",       color: "#9CA3AF", bg: "#F9FAFB", dot: "#D1D5DB" },
@@ -73,8 +73,8 @@ const DATE_TABS = [
 
 const STATUS_FILTER_TABS: { label: string; value: BookingStatus | "all" }[] = [
   { label: "전체",       value: "all" },
-  { label: "대기",       value: "pending" },
-  { label: "파일럿배정", value: "confirmed" },
+  { label: "예약접수",   value: "pending" },
+  { label: "예약확정",   value: "confirmed" },
   { label: "비행",       value: "flying" },
   { label: "비행완료",   value: "completed" },
   { label: "취소",       value: "cancelled" },
@@ -262,9 +262,15 @@ function DetailPanel({
     }
   }
 
-  const nextActions: { label: string; status: BookingStatus; color: string }[] = [];
+  const nextActions: { label: string; status: BookingStatus; color: string; confirmMsg?: string }[] = [];
   if (booking.status === "pending")
-    nextActions.push({ label: "파일럿 배정", status: "confirmed", color: "#2A7AE2" });
+    nextActions.push({
+      label: "예약 확정 (입금 확인)",
+      status: "confirmed",
+      color: "#2A7AE2",
+      confirmMsg:
+        `예약금 입금이 확인되었습니까?\n\n· 손님: ${booking.customer_name} (${booking.headcount}인)\n· 예약금: ${(booking.deposit_amount ?? 0).toLocaleString()}원\n· 예약번호: ${booking.booking_no}\n\n확인 시 상태가 "예약확정"으로 변경됩니다.`,
+    });
   if (booking.status === "confirmed")
     nextActions.push({ label: "비행 시작", status: "flying", color: "#FF8A00" });
   if (booking.status === "flying")
@@ -516,7 +522,10 @@ function DetailPanel({
               {nextActions.map((action) => (
                 <button
                   key={action.status}
-                  onClick={() => onStatusChange(booking.id, action.status)}
+                  onClick={() => {
+                    if (action.confirmMsg && !window.confirm(action.confirmMsg)) return;
+                    onStatusChange(booking.id, action.status);
+                  }}
                   className="flex items-center justify-between w-full px-4 py-3 rounded-xl text-sm font-medium text-white transition-opacity hover:opacity-90"
                   style={{ backgroundColor: action.color }}
                 >
@@ -632,11 +641,42 @@ export default function BookingsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    if (res.ok) {
-      const updated = await res.json();
-      setBookings((prev) => prev.map((b) => (b.id === id ? updated : b)));
-      setSelectedBooking((prev) => (prev?.id === id ? updated : prev));
+    if (!res.ok) return;
+    let updated = await res.json();
+
+    // ── 예약 확정 시 → 파일럿 자동 배정 (아직 배정 안 된 경우만) ──
+    // 입금 확인 후 확정 시점에 파일럿을 배정해, 파일럿이 다음날 스케줄을 미리 확인할 수 있게 한다.
+    if (status === "confirmed") {
+      const current = bookings.find((b) => b.id === id);
+      const alreadyAssigned = (current?.booking_pilots?.length ?? 0) > 0;
+      if (!alreadyAssigned) {
+        try {
+          const ar = await fetch("/api/admin/booking-pilots/auto-assign", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ booking_id: id }),
+          });
+          const aj = await ar.json().catch(() => ({}));
+          if (ar.status === 409) {
+            window.alert(
+              `예약은 확정되었지만 자리가 부족해 자동 배정에 실패했습니다 (${aj?.shortage ?? 0}명 부족).\n상세 화면의 "자동 재배정" 또는 시간대 조정으로 처리해주세요.`,
+            );
+          } else if (!ar.ok) {
+            window.alert(`예약은 확정되었으나 자동 배정 중 오류가 발생했습니다: ${aj?.error ?? "실패"}`);
+          }
+        } catch {
+          /* 상태는 이미 확정됨 — 배정만 실패, 무시하고 진행 */
+        }
+        // 배정 결과(booking_pilots)를 반영하기 위해 단건 재조회
+        try {
+          const rf = await fetch(`/api/bookings/${id}`, { cache: "no-store" });
+          if (rf.ok) updated = await rf.json();
+        } catch { /* keep PATCH result */ }
+      }
     }
+
+    setBookings((prev) => prev.map((b) => (b.id === id ? updated : b)));
+    setSelectedBooking((prev) => (prev?.id === id ? updated : prev));
   };
 
   // ── 예약 데이터 업데이트 (멀티 파일럿 배정 후 동기화용) ────────
@@ -697,7 +737,7 @@ export default function BookingsPage() {
         <div className="grid grid-cols-5 gap-3 mb-5">
           {[
             { label: "총 예약",   value: stats.total,     color: "#0D2B52" },
-            { label: "대기",      value: stats.waiting,   color: "#6B7280" },
+            { label: "진행중",    value: stats.waiting,   color: "#6B7280" },
             { label: "비행",      value: stats.flying,    color: "#FF8A00" },
             { label: "비행완료",  value: stats.completed, color: "#15803D" },
             { label: "취소",      value: stats.cancelled, color: "#9CA3AF" },

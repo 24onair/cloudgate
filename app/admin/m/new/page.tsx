@@ -794,7 +794,7 @@ export default function NewMobileBookingPage() {
                 결제 링크 SMS 자동 발송
               </div>
               <div className="text-[11px] mt-0.5" style={{ color: "#4d4f46" }}>
-                예약 확정 시 고객에게 토스·카카오페이 결제 링크를 SMS로 전송합니다.
+                예약 접수 시 고객에게 토스·카카오페이 결제 링크를 SMS로 전송합니다.
                 총액 / 예약금 / 잔금이 함께 안내됩니다.
               </div>
             </div>
@@ -911,7 +911,7 @@ export default function NewMobileBookingPage() {
           className="flex-1 h-12 rounded-xl font-bold text-base text-white active:scale-[0.99] disabled:opacity-40 disabled:active:scale-100"
           style={{ backgroundColor: "#0D2B52" }}
         >
-          {submitting ? "처리 중…" : isComplete ? "예약 확정 + 자동 배정" : "필수 항목 입력"}
+          {submitting ? "처리 중…" : isComplete ? "예약 접수 + 자동 배정" : "필수 항목 입력"}
         </button>
       </StickyActionBar>
 

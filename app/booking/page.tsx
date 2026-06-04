@@ -697,8 +697,10 @@ function BookingInner() {
             {agreed && <Check className="w-3 h-3 text-white" />}
           </div>
           <span className="text-sm leading-relaxed" style={{ color: "#4d4f46" }}>
-            위 안전 수칙을 모두 확인하였으며, 예약 취소 및 환불 정책에 동의합니다.
-            <span className="ml-1 underline cursor-pointer" style={{ color: "#4d4f46" }}>환불 정책 보기</span>
+            위 안전 수칙을 모두 확인하였으며,{" "}
+            <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "#23251d" }} onClick={(e) => e.stopPropagation()}>이용약관</a>,{" "}
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "#23251d" }} onClick={(e) => e.stopPropagation()}>개인정보처리방침</a>,{" "}
+            <a href="/refund" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "#23251d" }} onClick={(e) => e.stopPropagation()}>취소·환불 정책</a>에 동의합니다.
           </span>
         </label>
       </div>

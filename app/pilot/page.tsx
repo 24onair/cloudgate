@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLogo } from "@/lib/logoStore";
 import { useRouter } from "next/navigation";
 import MyRotationCard from "@/components/pilot/MyRotationCard";
+import { computeWithholding, WITHHOLDING_RATE } from "@/lib/settlement/compute";
 import {
   Wind,
   CalendarDays,
@@ -450,7 +451,7 @@ export default function PilotPortalPage() {
     try {
       const now  = new Date();
       const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-      const today = now.toISOString().slice(0, 10);
+      const today = now.toLocaleDateString("sv-SE"); // 로컬(KST) 기준 YYYY-MM-DD
 
       await fetch(`/api/bookings/${f.booking_id}`, {
         method: "PATCH",
@@ -464,7 +465,9 @@ export default function PilotPortalPage() {
           booking_id:  f.booking_id,
           pilot_id:    pilotId,
           flight_date: today,
-          landing_at:  hhmm,
+          // landing_at 은 timestamptz 컬럼 → 관리자 ops 와 동일하게 풀 타임스탬프 전송.
+          // (기존엔 "HH:MM" 만 보내 insert 실패 → 비행기록 미생성 버그였음)
+          landing_at:  `${today}T${hhmm}:00`,
         }),
       });
 
@@ -829,7 +832,7 @@ export default function PilotPortalPage() {
                     </div>
                     <div className="flex items-center gap-1.5 text-xs mt-1" style={{ color: "#9ea096" }}>
                       <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                      <span>착륙 {r.landing_at ?? "—"} · {bk?.booking_no ?? r.booking_id}</span>
+                      <span>착륙 {r.landing_at ? String(r.landing_at).slice(11, 16) : "—"} · {bk?.booking_no ?? r.booking_id}</span>
                     </div>
                   </div>
                 );
@@ -1161,6 +1164,26 @@ export default function PilotPortalPage() {
             <p className="text-3xl font-bold" style={{ color: "#23251d" }}>{formatPrice(amount)}</p>
             <p className="text-sm mb-1" style={{ color: "#9ea096" }}>/ {total}건</p>
           </div>
+          {/* 원천징수 3.3% 구분 (정산액 = 실지급 + 원천징수) */}
+          {(() => {
+            const w = computeWithholding(amount);
+            return (
+              <div className="rounded-xl px-3 py-2.5 mb-3 text-xs space-y-1.5" style={{ backgroundColor: "rgba(255,255,255,0.6)" }}>
+                <div className="flex items-center justify-between">
+                  <span style={{ color: "#9ea096" }}>정산액(총액)</span>
+                  <span className="font-medium" style={{ color: "#4d4f46" }}>{formatPrice(w.gross)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span style={{ color: "#9ea096" }}>원천징수 {WITHHOLDING_RATE}%</span>
+                  <span className="font-medium" style={{ color: "#C2410C" }}>− {formatPrice(w.tax)}</span>
+                </div>
+                <div className="flex items-center justify-between pt-1.5" style={{ borderTop: "1px dashed #d8dad0" }}>
+                  <span className="font-bold" style={{ color: "#23251d" }}>실지급액</span>
+                  <span className="font-bold text-sm" style={{ color: "#15803D" }}>{formatPrice(w.net)}</span>
+                </div>
+              </div>
+            );
+          })()}
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
               <p style={{ color: "#9ea096" }}>파일럿 지분</p>
@@ -1520,10 +1543,21 @@ export default function PilotPortalPage() {
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <p className="text-xs font-semibold mb-2" style={{ color: "#9ea096" }}>일 정산</p>
-                <div className="flex items-end gap-2 mb-3">
+                <div className="flex items-end gap-2 mb-1.5">
                   <p className="text-3xl font-bold" style={{ color: "#23251d" }}>{formatPrice(day.subtotal)}</p>
                   <p className="text-sm mb-1" style={{ color: "#9ea096" }}>/ {day.count}건 · 지분 {pilotShare}%</p>
                 </div>
+                {/* 원천징수 구분 (compact) */}
+                {(() => {
+                  const w = computeWithholding(day.subtotal);
+                  return (
+                    <p className="text-xs mb-3" style={{ color: "#9ea096" }}>
+                      실지급 <span className="font-bold" style={{ color: "#15803D" }}>{formatPrice(w.net)}</span>
+                      <span className="mx-1">·</span>
+                      원천징수 {WITHHOLDING_RATE}% <span style={{ color: "#C2410C" }}>−{formatPrice(w.tax)}</span>
+                    </p>
+                  );
+                })()}
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <p style={{ color: "#9ea096" }}>비행 건수</p>
@@ -1671,10 +1705,30 @@ export default function PilotPortalPage() {
           <p className="text-xs font-semibold mb-2 text-white/60">
             {cumulFrom.slice(5).replace("-", "/")} ~ {cumulTo.slice(5).replace("-", "/")} 누계
           </p>
-          <div className="flex items-end gap-2 mb-4">
+          <div className="flex items-end gap-2 mb-3">
             <p className="text-3xl font-bold text-white">{formatPrice(cumulAmount)}</p>
             <p className="text-sm mb-1 text-white/50">/ {cumulTotal}건</p>
           </div>
+          {/* 원천징수 3.3% 구분 */}
+          {(() => {
+            const w = computeWithholding(cumulAmount);
+            return (
+              <div className="rounded-xl px-3 py-2.5 mb-4 text-xs space-y-1.5" style={{ backgroundColor: "rgba(255,255,255,0.08)" }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/50">정산액(총액)</span>
+                  <span className="font-medium text-white/80">{formatPrice(w.gross)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/50">원천징수 {WITHHOLDING_RATE}%</span>
+                  <span className="font-medium" style={{ color: "#FCA5A5" }}>− {formatPrice(w.tax)}</span>
+                </div>
+                <div className="flex items-center justify-between pt-1.5" style={{ borderTop: "1px dashed rgba(255,255,255,0.15)" }}>
+                  <span className="font-bold text-white">실지급액</span>
+                  <span className="font-bold text-sm" style={{ color: "#86EFAC" }}>{formatPrice(w.net)}</span>
+                </div>
+              </div>
+            );
+          })()}
           <div className="grid grid-cols-3 gap-3">
             {[
               { label: "총 비행",   value: `${cumulTotal}건`,                  sub: "" },

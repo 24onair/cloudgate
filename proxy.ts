@@ -17,6 +17,70 @@ const PILOT_API_WHITELIST = new Set<string>([
   "/api/pilot/login",
 ]);
 
+// ─────────────────────────────────────────────────────────────────────
+// 공개 API 화이트리스트 (로그인 없이 손님 사이트가 호출하는 경로)
+//
+// 설계 원칙: 일반 `/api/*` 는 **기본 차단(default-deny → 관리자 전용)**.
+// 손님 랜딩/예약/후기 페이지가 실제로 호출하는 경로만 여기에 method 단위로 허용한다.
+// 같은 라우트라도 GET 은 공개, mutation(POST/PATCH/DELETE)은 관리자 전용인 경우가 많아
+// path + method 를 함께 본다.
+//
+// ⚠️ 후속 보강(BACKLOG): /api/upload 무제한 공개 업로드 → 파일타입·용량·rate limit 추가,
+//    /api/reviews GET 은 미인증 시 status=approved 로 강제(미승인 후기 노출 방지).
+// ─────────────────────────────────────────────────────────────────────
+type PublicRule = { re: RegExp; methods: Set<string> };
+const GET = new Set(["GET"]);
+const POST = new Set(["POST"]);
+
+const PUBLIC_API: PublicRule[] = [
+  // 손님 랜딩/예약 읽기 ────────────────────────────────────
+  { re: /^\/api\/products$/, methods: GET },
+  { re: /^\/api\/product-options$/, methods: GET },
+  { re: /^\/api\/weather$/, methods: GET },
+  { re: /^\/api\/bookings\/day-capacity$/, methods: GET },
+  { re: /^\/api\/faqs$/, methods: GET },
+  { re: /^\/api\/launch-sites$/, methods: GET },
+  { re: /^\/api\/site-settings(\/.*)?$/, methods: GET },
+  { re: /^\/api\/sns\/(posts|profile|shorts)$/, methods: GET },
+  { re: /^\/api\/youtube\/feed$/, methods: GET },
+  { re: /^\/api\/schedules$/, methods: GET },
+  { re: /^\/api\/blocked-slots$/, methods: GET },
+  { re: /^\/api\/pilots$/, methods: GET }, // 파일럿 로그인 화면의 선택 목록
+  // 손님 쓰기(로그인 없이 허용) ──────────────────────────────
+  { re: /^\/api\/bookings$/, methods: POST }, // 예약 생성
+  { re: /^\/api\/reviews$/, methods: new Set(["GET", "POST"]) }, // 후기 조회/작성
+  { re: /^\/api\/upload$/, methods: POST }, // 후기 사진 업로드
+];
+
+function isPublicApi(pathname: string, method: string): boolean {
+  for (const rule of PUBLIC_API) {
+    if (rule.re.test(pathname) && rule.methods.has(method)) return true;
+  }
+  return false;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 파일럿 세션으로도 접근 가능한 일반 API (관리자도 당연히 가능).
+// 파일럿 포털이 쓰는 경로만 명시. 그 외 일반 /api 는 관리자 전용 유지.
+//   - GET  /api/bookings            : 금일 전체 스케줄 조회
+//   - PATCH /api/bookings/:id        : 비행시작·착륙완료 상태 변경
+//   - GET/POST /api/flight_records   : 내 비행기록 조회 / 착륙 기록 생성
+//   - POST /api/schedules            : 본인 근무(출근·휴무) 토글
+// ─────────────────────────────────────────────────────────────────────
+const PILOT_ALLOWED_API: PublicRule[] = [
+  { re: /^\/api\/bookings$/, methods: GET },
+  { re: /^\/api\/bookings\/[^/]+$/, methods: new Set(["PATCH"]) },
+  { re: /^\/api\/flight_records$/, methods: new Set(["GET", "POST"]) },
+  { re: /^\/api\/schedules$/, methods: POST },
+];
+
+function isPilotAllowedApi(pathname: string, method: string): boolean {
+  for (const rule of PILOT_ALLOWED_API) {
+    if (rule.re.test(pathname) && rule.methods.has(method)) return true;
+  }
+  return false;
+}
+
 function isAdminPath(p: string) {
   return p === "/admin" || p.startsWith("/admin/") || p.startsWith("/api/admin/") || p === "/api/admin";
 }
@@ -65,6 +129,7 @@ function passThroughWithPathname(req: NextRequest, pathname: string): NextRespon
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const method = req.method;
 
   let secret: string;
   try {
@@ -100,14 +165,35 @@ export async function proxy(req: NextRequest) {
     return passThroughWithPathname(req, pathname);
   }
 
+  // ── 일반 API 보호 (기본 차단 → 관리자 전용) ─────────────────────────
+  // /api/admin, /api/pilot 이외의 모든 API. 공개 화이트리스트에 없으면
+  // 관리자 세션을 요구한다. (매출·정산·고객 PII·각종 mutation 차단)
+  if (pathname.startsWith("/api/")) {
+    if (isPublicApi(pathname, method)) {
+      return passThroughWithPathname(req, pathname);
+    }
+    // 관리자 세션이면 전부 허용
+    const adminToken = req.cookies.get(ADMIN_COOKIE)?.value ?? "";
+    if (adminToken && (await verifySession(adminToken, "admin", secret))) {
+      return passThroughWithPathname(req, pathname);
+    }
+    // 파일럿 포털이 쓰는 일부 경로는 파일럿 세션도 허용
+    if (isPilotAllowedApi(pathname, method)) {
+      const pilotToken = req.cookies.get(PILOT_COOKIE)?.value ?? "";
+      if (pilotToken && (await verifySession(pilotToken, "pilot", secret))) {
+        return passThroughWithPathname(req, pathname);
+      }
+    }
+    return unauthorized(req, "admin", true, pathname);
+  }
+
   return passThroughWithPathname(req, pathname);
 }
 
 export const config = {
   matcher: [
     "/admin/:path*",
-    "/api/admin/:path*",
     "/pilot/:path*",
-    "/api/pilot/:path*",
+    "/api/:path*",
   ],
 };

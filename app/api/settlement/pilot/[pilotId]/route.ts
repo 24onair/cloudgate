@@ -71,6 +71,21 @@ export async function GET(
       .lte("flight_date", toDate)
       .eq("status", "completed");
 
+    // 레거시 후보 중 booking_pilots 행이 하나라도 있는 예약 id 집합.
+    // 배정의 진실원은 booking_pilots 이므로, booking_pilots 가 존재하는 예약은
+    // 이 파일럿이 거기에 포함된 경우에만(=flightSet) 인정하고, pilot_id(레거시)는 무시한다.
+    // (그렇지 않으면 bookings.pilot_id 가 booking_pilots 와 불일치할 때 유령 비행으로 중복 집계됨)
+    const legacyIds = (legacyRows ?? []).map((b: any) => b.id);
+    const hasBookingPilots = new Set<string>();
+    if (legacyIds.length > 0) {
+      const { data: bpForLegacy } = await supabase
+        .from("booking_pilots")
+        .select("booking_id")
+        .eq("tenant_id", tenantId)
+        .in("booking_id", legacyIds);
+      for (const r of bpForLegacy ?? []) hasBookingPilots.add(r.booking_id);
+    }
+
     const flightSet = new Map<string, any>();
     for (const bp of bpRows ?? []) {
       const b = bp.bookings;
@@ -82,7 +97,8 @@ export async function GET(
       });
     }
     for (const b of legacyRows ?? []) {
-      if (flightSet.has(b.id)) continue;
+      if (flightSet.has(b.id)) continue;        // 이미 이 파일럿의 booking_pilots 로 집계됨
+      if (hasBookingPilots.has(b.id)) continue; // booking_pilots 가 있는 예약 → 레거시 제외 (이 파일럿은 미배정)
       flightSet.set(b.id, { ...b, pilot_count: 1 });
     }
 

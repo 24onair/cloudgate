@@ -760,9 +760,16 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
-          <div className="pt-6 flex flex-col md:flex-row items-center justify-between gap-2 text-xs" style={{ borderTop: "1px solid rgba(253,253,248,0.08)", color: "rgba(253,253,248,0.2)" }}>
-            <p>{footer.copyright}</p>
-            <p>{footer.bizInfo}</p>
+          <div className="pt-6" style={{ borderTop: "1px solid rgba(253,253,248,0.08)" }}>
+            <div className="flex flex-wrap gap-x-5 gap-y-1.5 mb-4 text-xs">
+              <a href="/terms" style={{ color: "rgba(253,253,248,0.45)" }}>이용약관</a>
+              <a href="/privacy" style={{ color: "rgba(253,253,248,0.7)", fontWeight: 600 }}>개인정보처리방침</a>
+              <a href="/refund" style={{ color: "rgba(253,253,248,0.45)" }}>취소·환불 정책</a>
+            </div>
+            <div className="flex flex-col md:flex-row items-center justify-between gap-2 text-xs" style={{ color: "rgba(253,253,248,0.2)" }}>
+              <p>{footer.copyright}</p>
+              <p>{footer.bizInfo}</p>
+            </div>
           </div>
         </div>
       </footer>

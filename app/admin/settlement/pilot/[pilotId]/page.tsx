@@ -6,6 +6,7 @@ import {
   ArrowLeft, ChevronLeft, ChevronRight, Printer, Save,
   CheckCircle2, RotateCcw, Wallet, FileText, Plane,
 } from "lucide-react";
+import { computeWithholding, WITHHOLDING_RATE } from "@/lib/settlement/compute";
 
 interface Flight {
   booking_id: string;
@@ -243,6 +244,42 @@ export default function SettlementDetailPage({ params }: { params: Promise<{ pil
             <SummaryCard label="분배율" value={`${displayShare}%`} sub={data.isOverride ? "예외 적용" : "기본"} />
             <SummaryCard label="정산액" value={`${data.summary.total_amount.toLocaleString()}원`} highlight />
           </div>
+
+          {/* 지급 명세 — 원천징수 3.3% 구분 (정산액 = 실지급 + 원천징수) */}
+          {(() => {
+            const w = computeWithholding(data.summary.total_amount);
+            return (
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-4 print:border print:shadow-none">
+                <div className="flex items-center gap-2 mb-3">
+                  <Wallet className="w-4 h-4" style={{ color: "#2A7AE2" }} />
+                  <h3 className="font-semibold text-gray-900">지급 명세</h3>
+                  <span className="text-xs text-gray-400">원천징수 {WITHHOLDING_RATE}% (사업소득)</span>
+                </div>
+                <div className="text-sm">
+                  <div className="flex items-center justify-between py-1.5">
+                    <span className="text-gray-500">정산액 (총액)</span>
+                    <span className="font-semibold text-gray-800">{w.gross.toLocaleString()}원</span>
+                  </div>
+                  <div className="flex items-center justify-between py-1.5">
+                    <span className="text-gray-500 pl-3">소득세 (3%)</span>
+                    <span style={{ color: "#DC2626" }}>−{w.incomeTax.toLocaleString()}원</span>
+                  </div>
+                  <div className="flex items-center justify-between py-1.5 border-b border-gray-100">
+                    <span className="text-gray-500 pl-3">지방소득세 (0.3%)</span>
+                    <span style={{ color: "#DC2626" }}>−{w.localTax.toLocaleString()}원</span>
+                  </div>
+                  <div className="flex items-center justify-between py-1.5 border-b border-gray-100">
+                    <span className="text-gray-500">원천징수 합계 ({WITHHOLDING_RATE}%)</span>
+                    <span className="font-medium" style={{ color: "#DC2626" }}>−{w.tax.toLocaleString()}원</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-3">
+                    <span className="font-bold text-gray-900">실지급액</span>
+                    <span className="text-xl font-bold" style={{ color: "#15803D" }}>{w.net.toLocaleString()}원</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* 상태 + 액션 */}
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-4">

@@ -25,6 +25,30 @@ export function resolveShare(
   return { share: defaultShare, isOverride: false };
 }
 
+// ── 원천징수 (사업소득 3.3%) ────────────────────────────────────
+// 정산액(총액, gross)에서 원천징수를 떼고 실지급액(net)을 산출.
+//   소득세    = gross × 3%      (원 단위 미만 절사)
+//   지방소득세 = 소득세 × 10%   (= gross × 0.3%, 원 단위 미만 절사)
+//   원천징수계 = 소득세 + 지방소득세  (≈ 3.3%)
+//   실지급액   = gross − 원천징수계
+export const WITHHOLDING_RATE = 3.3; // % (표시용)
+
+export interface WithholdingBreakdown {
+  gross: number;     // 정산액(총액)
+  incomeTax: number; // 소득세 3%
+  localTax: number;  // 지방소득세 0.3%
+  tax: number;       // 원천징수 합계 (3.3%)
+  net: number;       // 실지급액
+}
+
+export function computeWithholding(gross: number): WithholdingBreakdown {
+  const g = Math.max(0, Math.round(gross || 0));
+  const incomeTax = Math.floor(g * 0.03);
+  const localTax = Math.floor(incomeTax * 0.1);
+  const tax = incomeTax + localTax;
+  return { gross: g, incomeTax, localTax, tax, net: g - tax };
+}
+
 // ── 단일 비행 파일럿 몫 ──────────────────────────────────────────
 // 한 예약에 N명 배정 시 균등 분할 후 분배율 적용.
 export function pilotAmountForBooking(

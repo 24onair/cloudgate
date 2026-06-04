@@ -29,6 +29,7 @@ import {
   type PilotShareOverride,
   type PaymentScheduleConfig,
 } from "@/lib/settlementStore";
+import { computeWithholding, WITHHOLDING_RATE } from "@/lib/settlement/compute";
 
 // ─── 타입 ─────────────────────────────────────────────────────────
 interface DailyRow {
@@ -585,6 +586,9 @@ export default function SettlementPage() {
   const totalPilotFee = computedPilots.reduce((s, p) => s + p.amount, 0);
   const totalCosts    = daily.reduce((s, d) => s + d.costs, 0);
   const netProfit     = totalRevenue - totalPilotFee - totalCosts;
+  // 원천징수 합계 — 파일럿별로 따로 징수되므로 per-pilot 합산이 정확
+  const totalNet      = computedPilots.reduce((s, p) => s + computeWithholding(p.amount).net, 0);
+  const totalTax      = totalPilotFee - totalNet;
 
   const prevRevenue = summary?.prevRevenue ?? 0;
   const revenueChange = prevRevenue > 0 ? Math.round(((totalRevenue - prevRevenue) / prevRevenue) * 100) : null;
@@ -679,9 +683,16 @@ export default function SettlementPage() {
               <Users className="w-4 h-4 text-gray-500" />
             </div>
           </div>
-          <p className="text-xs text-gray-400 mt-3">
-            매출 대비 {totalRevenue > 0 ? Math.round((totalPilotFee / totalRevenue) * 100) : 0}%
-          </p>
+          <div className="mt-3 pt-2 border-t border-gray-100 space-y-0.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-400">원천징수 {WITHHOLDING_RATE}%</span>
+              <span style={{ color: "#DC2626" }}>−{loading ? "—" : totalTax.toLocaleString()}원</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-gray-500">실지급 합계</span>
+              <span className="font-bold" style={{ color: "#15803D" }}>{loading ? "—" : totalNet.toLocaleString()}원</span>
+            </div>
+          </div>
         </div>
 
         {/* 순수익 */}
@@ -784,7 +795,10 @@ export default function SettlementPage() {
                 </div>
                 <span className="text-sm text-gray-600 text-right">{pilot.flights}건</span>
                 <span className="text-sm font-semibold text-right" style={{ color: "#2A7AE2" }}>{pilot.share ?? cfg.defaultPilotShare}%</span>
-                <span className="text-sm font-semibold text-right" style={{ color: "#0D2B52" }}>{pilot.amount.toLocaleString()}원</span>
+                <div className="text-right">
+                  <span className="text-sm font-semibold block" style={{ color: "#0D2B52" }}>{pilot.amount.toLocaleString()}원</span>
+                  <span className="text-[10px] text-gray-400">실지급 {computeWithholding(pilot.amount).net.toLocaleString()}</span>
+                </div>
                 <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                   {!isMonthMode ? (
                     <ChevronRight className="w-4 h-4 text-gray-300" />
@@ -818,9 +832,12 @@ export default function SettlementPage() {
                 {computedPilots.reduce((s, p) => s + p.flights, 0)}건
               </span>
               <span />
-              <span className="text-sm font-bold text-right" style={{ color: "#0D2B52" }}>
-                {totalPilotFee.toLocaleString()}원
-              </span>
+              <div className="text-right">
+                <span className="text-sm font-bold block" style={{ color: "#0D2B52" }}>
+                  {totalPilotFee.toLocaleString()}원
+                </span>
+                <span className="text-[10px] text-gray-400">실지급 {totalNet.toLocaleString()}</span>
+              </div>
               <span />
             </div>
           )}

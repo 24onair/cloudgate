@@ -86,10 +86,11 @@ let _shorts: YoutubeShort[] = [];
 let _loaded = false;
 
 async function fetchAll() {
-  const [profileRes, postsRes, shortsRes] = await Promise.all([
+  const [profileRes, postsRes, shortsRes, fetchedRes] = await Promise.all([
     fetch("/api/sns/profile"),
     fetch("/api/sns/posts"),
     fetch("/api/sns/shorts"),
+    fetch("/api/sns/fetched-shorts"),
   ]);
 
   if (profileRes.ok) {
@@ -103,6 +104,10 @@ async function fetchAll() {
   if (shortsRes.ok) {
     const rows = await shortsRes.json() as Record<string, unknown>[];
     _shorts = (rows ?? []).map(mapShort).sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+  if (fetchedRes.ok) {
+    const { value } = await fetchedRes.json() as { value: FetchedShort[] | null };
+    _fetchedShorts = Array.isArray(value) ? value : [];
   }
 }
 
@@ -181,7 +186,8 @@ export async function deleteYoutubeShort(id: string) {
   await fetch(`/api/sns/shorts/${id}`, { method: "DELETE" });
 }
 
-// ── FetchedShorts: 세션 메모리만 사용 (임시 RSS 결과) ──────────
+// ── FetchedShorts: 자동 수집(RSS) 결과 ────────────────────────
+// 서버(site_settings)에 영속화되어 공개 랜딩페이지에서도 동일하게 읽힌다.
 export interface FetchedShort {
   videoId: string;
   title: string;
@@ -190,14 +196,25 @@ export interface FetchedShort {
 
 let _fetchedShorts: FetchedShort[] = [];
 
+function persistFetchedShorts(items: FetchedShort[]) {
+  // 공개 페이지에서 읽을 수 있도록 서버에 저장 (실패해도 화면 동작은 유지)
+  fetch("/api/sns/fetched-shorts", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value: items }),
+  }).catch(() => {});
+}
+
 export function saveFetchedShorts(items: FetchedShort[]) {
   _fetchedShorts = items;
   notify();
+  persistFetchedShorts(items);
 }
 
 export function clearFetchedShorts() {
   _fetchedShorts = [];
   notify();
+  persistFetchedShorts([]);
 }
 
 // ── Hook ────────────────────────────────────────────────────────

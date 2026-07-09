@@ -149,7 +149,7 @@ function RevenueChart({ data, period }: { data: DailyRow[]; period: string }) {
   );
 }
 
-// ─── 분배 비율 관리 카드 (localStorage 기반 유지) ─────────────────
+// ─── 분배 비율 관리 카드 (settlementStore — /api/site-settings 서버 저장) ───
 function SplitRatioCard({ pilots }: { pilots: PilotRow[] }) {
   const { cfg, overrides } = useSettlement();
   const [draft, setDraft]   = useState(cfg.defaultPilotShare);
@@ -447,7 +447,7 @@ export default function SettlementPage() {
   // 단일 월(이번 달) 모드일 때만 정산 확정/지급 액션을 노출 (월 단위 정산이 원칙)
   const isMonthMode = period === "month";
 
-  // ── 분배 비율 (settlementStore — localStorage) ──
+  // ── 분배 비율 (settlementStore — /api/site-settings 서버 저장) ──
   const { cfg, overrides } = useSettlement();
 
   // ── 서버 응답을 우선시하되, 슬라이더 즉시 반영을 위한 낙관적 fallback ──

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
@@ -16,20 +16,21 @@ import {
   useScheduleNotes,
   updatePilotSchedule,
   updatePilotNote,
-  PILOTS_META,
   SCHEDULE_CFG,
+  type PilotMeta,
   type ScheduleStatus,
 } from "@/lib/scheduleStore";
 
 // ── 상수 ─────────────────────────────────────────────────────────
-// TODO: API — MY_PILOT_ID 하드코딩 → 로그인 세션에서 파일럿 ID 추출
-// TODO: API — 스케줄 조회 → GET /api/pilot/me/schedule (query: ?year=&month=)
-// TODO: API — 스케줄 저장(updatePilotSchedule) → PATCH /api/pilot/me/schedule/:date { status }
-// TODO: API — 기타 사유(updatePilotNote) → PATCH /api/pilot/me/schedule/:date/note { note }
-const MY_PILOT_ID = "p1";
-const TODAY = "2026-05-03";
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 const MY_OPTIONS: ScheduleStatus[] = ["working", "off", "etc"];
+const AVATAR_COLORS = ["#2A7AE2", "#F54E00", "#16A34A", "#7C3AED", "#D97706", "#DC2626"];
+
+// 로컬(KST) 기준 오늘 날짜 YYYY-MM-DD — toISOString(UTC) 사용 금지
+function localToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 // ── 달력 헬퍼 ────────────────────────────────────────────────────
 function daysInMonth(y: number, m: number) {
@@ -51,12 +52,45 @@ export default function PilotSchedulePage() {
   const router = useRouter();
   const schedules = useSchedules();
   const allNotes = useScheduleNotes();
-  const mySchedule = schedules[MY_PILOT_ID] ?? {};
-  const myNotes = allNotes[MY_PILOT_ID] ?? {};
+
+  // 세션 파일럿 식별 (/api/pilot/me) — 미인증이면 로그인으로
+  const [myPilotId, setMyPilotId] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/pilot/me")
+      .then((r) => {
+        if (!r.ok) { router.replace("/pilot/login"); return null; }
+        return r.json();
+      })
+      .then((pilot: { id: string } | null) => {
+        if (pilot) setMyPilotId(pilot.id);
+      })
+      .catch(() => router.replace("/pilot/login"));
+  }, [router]);
+
+  // 팀 뷰용 파일럿 목록 (/api/pilots)
+  const [pilotsMeta, setPilotsMeta] = useState<PilotMeta[]>([]);
+  useEffect(() => {
+    fetch("/api/pilots?status=active")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: { id: string; name: string }[]) => {
+        if (!Array.isArray(rows)) return;
+        setPilotsMeta(rows.map((p, i) => ({
+          id: p.id,
+          name: p.name,
+          initials: (p.name ?? "?").slice(0, 1),
+          avatarColor: AVATAR_COLORS[i % AVATAR_COLORS.length],
+        })));
+      })
+      .catch(() => {});
+  }, []);
+
+  const mySchedule = (myPilotId ? schedules[myPilotId] : undefined) ?? {};
+  const myNotes = (myPilotId ? allNotes[myPilotId] : undefined) ?? {};
+  const TODAY = localToday();
 
   const [view, setView] = useState<ViewMode>("my");
-  const [viewYear, setViewYear] = useState(2026);
-  const [viewMonth, setViewMonth] = useState(5);
+  const [viewYear, setViewYear] = useState(() => new Date().getFullYear());
+  const [viewMonth, setViewMonth] = useState(() => new Date().getMonth() + 1);
   const [pickerDate, setPickerDate] = useState<string | null>(null);
   const [pendingStatus, setPendingStatus] = useState<ScheduleStatus>("off");
   const [pendingNote, setPendingNote] = useState<string>("");
@@ -90,9 +124,9 @@ export default function PilotSchedulePage() {
   }
 
   function confirmChange() {
-    if (!pickerDate || !pendingStatus) return;
-    updatePilotSchedule(MY_PILOT_ID, pickerDate, pendingStatus);
-    updatePilotNote(MY_PILOT_ID, pickerDate, pendingStatus === "etc" ? pendingNote : "");
+    if (!pickerDate || !pendingStatus || !myPilotId) return;
+    updatePilotSchedule(myPilotId, pickerDate, pendingStatus);
+    updatePilotNote(myPilotId, pickerDate, pendingStatus === "etc" ? pendingNote : "");
     setSavedDates((prev) => new Set(prev).add(pickerDate));
     setPickerDate(null);
   }
@@ -227,7 +261,7 @@ export default function PilotSchedulePage() {
       <div className="rounded-2xl p-4 border" style={{ backgroundColor: "#fdfdf8", borderColor: "#bfc1b7" }}>
         {/* 파일럿 색상 범례 */}
         <div className="flex flex-wrap gap-2 mb-4 pb-3 border-b" style={{ borderColor: "#e5e7e0" }}>
-          {PILOTS_META.map((p) => (
+          {pilotsMeta.map((p) => (
             <span key={p.id} className="flex items-center gap-1.5 text-xs" style={{ color: "#4d4f46" }}>
               <span
                 className="w-4 h-4 rounded flex items-center justify-center text-white font-bold"
@@ -282,7 +316,7 @@ export default function PilotSchedulePage() {
                   {day}
                 </span>
                 <div className="grid grid-cols-2 gap-0.5">
-                  {PILOTS_META.map((pilot) => {
+                  {pilotsMeta.map((pilot) => {
                     const ps = (schedules[pilot.id] ?? {})[date] as ScheduleStatus | undefined;
                     return (
                       <div
@@ -309,7 +343,7 @@ export default function PilotSchedulePage() {
           파일럿별 {viewMonth}월 현황
         </p>
         <div className="space-y-3">
-          {PILOTS_META.map((pilot) => {
+          {pilotsMeta.map((pilot) => {
             const ps = schedules[pilot.id] ?? {};
             const monthEntries = Object.fromEntries(
               Object.entries(ps).filter(([k]) => k.startsWith(viewMonthKey))
@@ -453,8 +487,8 @@ export default function PilotSchedulePage() {
 
       {/* 컨텐츠 */}
       <div className="px-4 py-5">
-        {view === "my"   && <MyCalendar />}
-        {view === "team" && <TeamCalendar />}
+        {view === "my"   && MyCalendar()}
+        {view === "team" && TeamCalendar()}
       </div>
 
       {/* 상태 선택 바텀시트 */}

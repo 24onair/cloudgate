@@ -1,90 +1,52 @@
-# build output
-dist
-!.github/actions/*/dist
-.next
-.next-profiles
-target
-packages/next/wasm/@next
-tarballs/
-packages/**/*.tgz
-.errors/
+# ── Next.js 앱용 .gitignore ─────────────────────────────
+# (이전 파일은 Next.js 프레임워크 저장소용 템플릿이어서 교체함)
 
-# rust compiler crashes
-rustc-ice-*.txt
+# build output
+.next/
+out/
+dist/
 
 # dependencies
-node_modules
-package-lock.json
-yarn.lock
-!/yarn.lock
-test/node_modules
-.pnpm-store/
-.github/**/node_modules
+node_modules/
 
-# logs & pids
+# env — 예시(.env.example)와 배포 기본값(.env.production)만 추적
+.env
+.env.local
+.env*.local
+
+# logs
 *.log
-pids
-*.cpuprofile
-*.heapsnapshot
-.next-profiles
+npm-debug.log*
 
 # coverage
-.nyc_output
-coverage
+coverage/
+.nyc_output/
 
-# test output
-test/**/out/*
-test/**/next-env.d.ts
-test/**/.next*
+# OS / editor
 .DS_Store
-/e2e-tests
-test/tmp/**
-test/.trace
-test/traces
-
-# Editors
 **/.idea
-**/.#*
-.nvmrc
-
-# examples
-examples/**/out/*
-
-# env
-.env*.local
-evals/.env
-
-pr-stats.md
-test-timings.json
 
 # Vercel
 .vercel
-.now
 
-# Cache
+# cache
 *.tsbuildinfo
 .swc/
 .turbo
 
-# Storybook
-*storybook.log
-
-# Claude Code (local settings and session files)
+# Claude Code (로컬 설정·세션 파일)
 .claude/settings.local.json
 .claude/plans/
 .claude/todos.json
 .claude/worktrees
 CLAUDE.local.md
 
-# Conductor (worktrees created by Conductor app, but keep scripts/)
+# Conductor (워크트리는 무시, scripts/ 는 추적)
 .conductor/*/
 !.conductor/scripts/
 
-index.scip
-
-# Evals
-evals/.tarballs/
-evals/experiments/
-evals/results/
-evals/agent-results.json
+# gstack
 .gstack/
+
+# 로컬 격리 폴더 (삭제 전 임시 보관)
+.trash-*/

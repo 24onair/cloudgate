@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // 로컬 격리 폴더 (삭제 전 임시 보관)
+    ".trash-*/**",
   ]),
 ]);
 

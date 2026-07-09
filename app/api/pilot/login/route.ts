@@ -69,8 +69,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "비활성 파일럿입니다." }, { status: 403 });
     }
 
-    const storedPin = pilot.pin ?? "0000";
-    if (pin !== storedPin) {
+    // PIN 미설정 파일럿은 로그인 자체를 거부 (기본값 폴백 금지 — 보안)
+    if (!pilot.pin) {
+      return NextResponse.json(
+        { error: "PIN이 설정되지 않았습니다. 관리자에게 문의하세요." },
+        { status: 403 },
+      );
+    }
+    if (pin !== pilot.pin) {
       registerFailure(rlKey, PILOT_LOGIN_POLICY);
       return NextResponse.json({ error: "PIN이 올바르지 않습니다." }, { status: 401 });
     }

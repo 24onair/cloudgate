@@ -21,6 +21,8 @@ export interface LegalFields {
   mailOrderNo: string;
   /** 최대 탑승 연령 (만 N세 이하) — 안전 기준 (미확정) */
   maxAge: string;
+  /** 최소 탑승 체중 (Nkg 이상) — 예약 화면 고지(40~90kg)와 일치시켜 40 사용 */
+  minWeight: string;
   /** 최대 탑승 체중 (Nkg 이하) — 예약 화면 고지(40~90kg)와 일치시켜 90 사용 */
   maxWeight: string;
   /** 카카오톡 채널명 (미운영이면 UNSET) */
@@ -33,6 +35,7 @@ export const LEGAL_FIELDS: LegalFields = {
   email: UNSET, // TODO 필수: 고객센터 이메일
   mailOrderNo: UNSET, // TODO 필수: 통신판매업 신고번호
   maxAge: UNSET, // TODO: 최대 연령 (예: 만 70세)
+  minWeight: "40", // 예약 화면 "체중 40kg~90kg" 고지와 일치 (원문 15kg 하한은 오기)
   maxWeight: "90", // 예약 화면 "체중 40kg~90kg" 고지와 일치
   kakao: UNSET, // TODO: 카카오 채널명 또는 미운영
 };
@@ -45,6 +48,7 @@ export function fillLegalTokens(md: string, f: LegalFields = LEGAL_FIELDS): stri
     .replaceAll("[이메일 — 추후 입력]", f.email)
     .replaceAll("[통신판매업 신고번호 — 추후 입력]", f.mailOrderNo)
     .replaceAll("[최대연령 — 추후 입력]", f.maxAge)
+    .replaceAll("체중: 15kg", `체중: ${f.minWeight}kg`) // 원문 하한 15kg → 예약 화면 기준(40kg)으로 통일
     .replaceAll("[최대체중 — 추후 입력]", f.maxWeight)
     .replaceAll("[카카오 채널명 — 추후 입력 또는 미운영]", f.kakao)
     .replaceAll("[알림 서비스 제공자: 추후 결정]", "알림 서비스 제공자(선정 예정)");

@@ -25,8 +25,8 @@ const PILOT_API_WHITELIST = new Set<string>([
 // 같은 라우트라도 GET 은 공개, mutation(POST/PATCH/DELETE)은 관리자 전용인 경우가 많아
 // path + method 를 함께 본다.
 //
-// ⚠️ 후속 보강(BACKLOG): /api/upload 무제한 공개 업로드 → 파일타입·용량·rate limit 추가,
-//    /api/reviews GET 은 미인증 시 status=approved 로 강제(미승인 후기 노출 방지).
+// ⚠️ 후속 보강(BACKLOG): /api/reviews GET 은 미인증 시 status=approved 로 강제(미승인 후기 노출 방지).
+//    (/api/upload 는 라우트 자체에서 MIME·용량·rate limit·폴더 강제 가드 적용됨)
 // ─────────────────────────────────────────────────────────────────────
 type PublicRule = { re: RegExp; methods: Set<string> };
 const GET = new Set(["GET"]);
@@ -49,7 +49,7 @@ const PUBLIC_API: PublicRule[] = [
   // 손님 쓰기(로그인 없이 허용) ──────────────────────────────
   { re: /^\/api\/bookings$/, methods: POST }, // 예약 생성
   { re: /^\/api\/reviews$/, methods: new Set(["GET", "POST"]) }, // 후기 조회/작성
-  { re: /^\/api\/upload$/, methods: POST }, // 후기 사진 업로드
+  { re: /^\/api\/upload$/, methods: POST }, // 후기 사진 업로드 (라우트 내 MIME·용량·rate limit 가드)
 ];
 
 function isPublicApi(pathname: string, method: string): boolean {

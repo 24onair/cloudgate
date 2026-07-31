@@ -37,7 +37,9 @@ function useSaved() {
   return [saved, flash] as const;
 }
 
-function compressImage(file: File, maxPx = 1920): Promise<string> {
+// 리사이즈 후 JPEG Blob 반환 — base64를 site_settings KV에 넣지 않고
+// /api/upload(Storage URL)로 올리기 위한 전처리. (base64 저장은 랜딩 로딩을 수백 KB 무겁게 함)
+function compressImageBlob(file: File, maxPx = 1920): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -53,11 +55,27 @@ function compressImage(file: File, maxPx = 1920): Promise<string> {
       const ctx = canvas.getContext("2d");
       if (!ctx) { reject(new Error("no ctx")); return; }
       ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL("image/jpeg", 0.75));
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error("toBlob failed"))),
+        "image/jpeg",
+        0.75,
+      );
     };
     img.onerror = reject;
     img.src = url;
   });
+}
+
+// 압축 → /api/upload 업로드 → 공개 URL 반환 (admin/settings 페이지와 동일 패턴)
+async function uploadBackground(file: File): Promise<string> {
+  const blob = await compressImageBlob(file);
+  const fd = new FormData();
+  fd.append("file", new File([blob], "background.jpg", { type: "image/jpeg" }));
+  fd.append("folder", "backgrounds");
+  const res = await fetch("/api/upload", { method: "POST", body: fd });
+  if (!res.ok) throw new Error("upload failed");
+  const { url } = (await res.json()) as { url: string };
+  return url;
 }
 
 // ── 공통 컴포넌트 ─────────────────────────────────────────────────
@@ -444,8 +462,8 @@ function BgUploadCard({
     if (!file.type.startsWith("image/")) return;
     setProcessing(true);
     try {
-      const compressed = await compressImage(file);
-      onSet({ imageDataUrl: compressed, enabled: true });
+      const url = await uploadBackground(file);
+      onSet({ imageDataUrl: url, enabled: true });
       flash();
     } catch { alert("이미지 처리 중 오류가 발생했습니다."); }
     finally { setProcessing(false); }

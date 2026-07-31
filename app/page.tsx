@@ -27,6 +27,7 @@ import { useLogo } from "@/lib/logoStore";
 import { useFooter } from "@/lib/footerStore";
 import { usePageContent } from "@/lib/pageContentStore";
 import { useReviews } from "@/lib/reviewStore";
+import { COMPANY } from "@/lib/company";
 
 // ── DB 상품 타입 ──────────────────────────────────────────────────
 interface DbProduct {
@@ -247,7 +248,7 @@ export default function LandingPage() {
         {heroBg.imageDataUrl && heroBg.enabled && (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={heroBg.imageDataUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: heroBg.objectPosition ?? "50% 50%" }} />
+            <img src={heroBg.imageDataUrl} alt="" aria-hidden fetchPriority="high" className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: heroBg.objectPosition ?? "50% 50%" }} />
             {/* 브랜드 그라데이션 오버레이 — 가독성 확보 */}
             <div
               className="absolute inset-0"
@@ -310,6 +311,14 @@ export default function LandingPage() {
             >
               {content.heroSecondaryButton}
             </button>
+            {/* 전화 예약 — 광고 랜딩 요건: 첫 화면 스크롤 없이 전화번호 노출 */}
+            <a
+              href={COMPANY.telHref}
+              className="flex items-center gap-2 px-7 py-3.5 text-sm font-bold text-white transition-opacity hover:opacity-80"
+              style={{ backgroundColor: "#F54E00", borderRadius: "6px" }}
+            >
+              <Phone className="w-4 h-4" /> {COMPANY.phone}
+            </a>
           </div>
 
           {/* 통계 */}
@@ -336,7 +345,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── 상품 ─────────────────────────────────────────────── */}
-      <section ref={productRef} className="py-20 px-6" style={{ backgroundColor: "#eeefe9" }}>
+      <section id="price" ref={productRef} className="py-20 px-6" style={{ backgroundColor: "#eeefe9" }}>
         <div className="max-w-5xl mx-auto">
           <div className="mb-12">
             <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: "#F54E00" }}>{content.productLabel}</p>
@@ -485,7 +494,7 @@ export default function LandingPage() {
                 const inner = (
                   <div className="relative rounded overflow-hidden aspect-square group cursor-pointer" style={{ borderRadius: "4px" }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={post.imageUrl} alt={post.caption} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                    <img src={post.imageUrl} alt={post.caption} loading="lazy" width={400} height={400} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                     <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center" style={{ background: "rgba(245,78,0,0.8)" }}>
                       <Instagram className="w-8 h-8 text-white" />
                     </div>
@@ -525,7 +534,7 @@ export default function LandingPage() {
               {ytShorts.slice(0, snsProfile.youtubeCount).map((s) => (
                 <a key={s.id} href={`https://youtube.com/shorts/${s.videoId}`} target="_blank" rel="noreferrer" className="relative rounded overflow-hidden group cursor-pointer" style={{ aspectRatio: "9/16", borderRadius: "4px" }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={youtubeThumbnail(s.videoId)} alt={s.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                  <img src={youtubeThumbnail(s.videoId)} alt={s.title} loading="lazy" width={480} height={360} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="w-12 h-12 rounded-full flex items-center justify-center transition-transform group-hover:scale-110" style={{ backgroundColor: "rgba(255,0,0,0.9)" }}>
@@ -591,7 +600,7 @@ export default function LandingPage() {
         {faqBg.imageDataUrl && faqBg.enabled && (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={faqBg.imageDataUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: faqBg.objectPosition ?? "50% 50%" }} />
+            <img src={faqBg.imageDataUrl} alt="" aria-hidden loading="lazy" className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: faqBg.objectPosition ?? "50% 50%" }} />
             {/* 브랜드 그라데이션 오버레이 */}
             <div
               className="absolute inset-0"
@@ -672,7 +681,7 @@ export default function LandingPage() {
                     <div className="flex gap-1.5 mb-3">
                       {r.images.slice(0, 3).map((img, i) => (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img key={i} src={img} alt="" className="w-16 h-16 object-cover rounded-lg" />
+                        <img key={i} src={img} alt="" loading="lazy" width={64} height={64} className="w-16 h-16 object-cover rounded-lg" />
                       ))}
                     </div>
                   )}
@@ -697,7 +706,7 @@ export default function LandingPage() {
         {ctaBg.imageDataUrl && ctaBg.enabled && (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={ctaBg.imageDataUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: ctaBg.objectPosition ?? "50% 50%" }} />
+            <img src={ctaBg.imageDataUrl} alt="" aria-hidden loading="lazy" className="absolute inset-0 w-full h-full object-cover" style={{ objectPosition: ctaBg.objectPosition ?? "50% 50%" }} />
             {/* 브랜드 그라데이션 오버레이 */}
             <div
               className="absolute inset-0"
@@ -774,11 +783,18 @@ export default function LandingPage() {
         </div>
       </footer>
 
-      {/* ── 플로팅 예약 버튼 (모바일) ───────────────────────── */}
-      <div className="fixed bottom-6 left-0 right-0 flex justify-center z-40 md:hidden">
+      {/* ── 플로팅 [전화|예약] 버튼 (모바일) ─────────────────── */}
+      <div className="fixed bottom-6 left-0 right-0 flex justify-center gap-2 z-40 md:hidden">
+        <a
+          href={COMPANY.telHref}
+          className="flex items-center gap-2 px-6 py-3.5 text-sm font-bold text-white shadow-lg"
+          style={{ backgroundColor: "#F54E00", borderRadius: "6px" }}
+        >
+          <Phone className="w-4 h-4" /> 전화하기
+        </a>
         <button
           onClick={() => router.push("/booking")}
-          className="flex items-center gap-2 px-8 py-3.5 text-sm font-semibold text-white shadow-lg"
+          className="flex items-center gap-2 px-6 py-3.5 text-sm font-semibold text-white shadow-lg"
           style={{ backgroundColor: "#1e1f23", borderRadius: "6px" }}
         >
           예약하기 <ArrowRight className="w-4 h-4" />

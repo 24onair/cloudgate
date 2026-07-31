@@ -24,6 +24,7 @@ import {
   countAvailablePilots as _countPilots,
 } from "@/lib/slotStore";
 import { usePageContent } from "@/lib/pageContentStore";
+import { COMPANY } from "@/lib/company";
 
 // ── 타입 ─────────────────────────────────────────────────────────
 interface DbProduct {
@@ -902,13 +903,24 @@ function BookingInner() {
             <span className="font-bold text-sm" style={{ color: "#23251d" }}>구름상회 예약</span>
           </div>
         </div>
-        <button
-          onClick={() => router.push("/")}
-          className="p-1.5 rounded-lg transition-colors"
-          style={{ backgroundColor: "transparent" }}
-        >
-          <X className="w-4 h-4" style={{ color: "#9ea096" }} />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* 전화 예약 CTA — 첫 화면 스크롤 없이 노출 (광고 랜딩 요건) */}
+          <a
+            href={COMPANY.telHref}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+            style={{ backgroundColor: "#F54E00" }}
+          >
+            <Phone className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">전화 예약 </span>{COMPANY.phone}
+          </a>
+          <button
+            onClick={() => router.push("/")}
+            className="p-1.5 rounded-lg transition-colors"
+            style={{ backgroundColor: "transparent" }}
+          >
+            <X className="w-4 h-4" style={{ color: "#9ea096" }} />
+          </button>
+        </div>
       </div>
 
       <div className="max-w-lg mx-auto px-4 py-6">

@@ -41,7 +41,7 @@ const PUBLIC_API: PublicRule[] = [
   { re: /^\/api\/faqs$/, methods: GET },
   { re: /^\/api\/launch-sites$/, methods: GET },
   { re: /^\/api\/site-settings(\/.*)?$/, methods: GET },
-  { re: /^\/api\/sns\/(posts|profile|shorts)$/, methods: GET },
+  { re: /^\/api\/sns\/(posts|profile|shorts|fetched-shorts)$/, methods: GET },
   { re: /^\/api\/youtube\/feed$/, methods: GET },
   { re: /^\/api\/schedules$/, methods: GET },
   { re: /^\/api\/blocked-slots$/, methods: GET },
